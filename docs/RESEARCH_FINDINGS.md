@@ -1,0 +1,77 @@
+# Research Findings — Edge Hunt Across Crypto, Forex & Commodities
+
+All numbers below are **out-of-sample (OOS)** from walk-forward analysis:
+parameters were optimized on past data, then measured on the *next* unseen
+window, rolled forward. This is the honest test of whether an edge is real
+rather than curve-fit.
+
+Position sizing risks 2% per trade. Returns/drawdown are scale-invariant
+(reported as %) so they reflect the strategy, not contract size. Costs
+(spread/slippage) are modeled on every fill.
+
+## The one principle that runs through everything
+
+**Win rate is not the goal — positive expectancy is.** Repeatedly, the
+highest-win-rate setups were among the *worst* performers, and profitable
+strategies won only ~40–55% of the time but with winners larger than losers.
+
+## Validated edges (keep these)
+
+| Instrument | Class | Timeframe | Strategy | PF | Return | Max DD | Sharpe |
+|---|---|---|---|---|---|---|---|
+| BTCUSD | crypto | H4 | Trend (EMA+RSI + daily filter) | 1.39 | +22.8% | 12.7% | 0.84 |
+| XAUUSD (gold) | commodity | H4 | Trend (EMA+RSI + daily filter) | 1.87 | +13.9% | 5.9% | **1.35** |
+| AUDUSD | forex | H4 | Mean-reversion (Bollinger+RSI) | 1.60 | +18.9% | 9.1% | **1.27** |
+| USDJPY | forex | H4 | Mean-reversion (Bollinger+RSI) | 1.76 | +17.9% | 11.9% | 1.18 |
+| XAGUSD (silver) | commodity | H4 | Trend (EMA+RSI + daily filter) | 1.61 | +11.0% | 6.9% | 0.85 |
+| GBPUSD | forex | Daily | Trend (EMA+RSI + weekly filter) | 1.45 | +11.5% | 8.3% | 0.27 |
+
+## Avoid (no edge found with either approach)
+
+| Instrument | Notes |
+|---|---|
+| EURUSD | Loses with both trend and mean-reversion at H4. Too efficient/noisy. |
+| USDCAD | Marginal on daily trend; mean-reversion loses badly. Skip for now. |
+| WTI (oil) | Only marginally positive at H4; trends better on daily. Low priority. |
+
+## Key insights
+
+1. **Match the strategy to the instrument's character.**
+   - *Trending* markets (crypto, gold, silver) → **trend-following**.
+   - *Range-bound* majors (AUDUSD, USDJPY) → **mean-reversion**.
+   - Using the wrong tool turns a winner into a loser (e.g. USDJPY: −8% trend vs
+     +18% mean-reversion).
+
+2. **Timeframe matters.** Forex majors whipsaw on H4 for trend-following but the
+   H4 mean-reversion edge is strong. Commodities trend well even on H4.
+
+3. **Crypto has the strongest raw trend edge** but the highest volatility. Gold
+   gave the best *risk-adjusted* result (Sharpe 1.35) with a tiny 5.9% drawdown.
+
+4. **A diversified portfolio beats any single bet.** These edges come from
+   different asset classes and different strategy types, so their ups and downs
+   are unlikely to line up — combining them should smooth the equity curve.
+
+## Honest caveats
+
+- We tested ~16 instrument/strategy combinations. With that many tries, a few
+  winners could be partly luck (selection bias). The remedy: **forward-test the
+  finalists on a demo account** and keep monitoring OOS behavior.
+- H4 forex history is only ~2 years (Yahoo hourly limit) → fewer trades, lower
+  statistical confidence than the crypto/daily sets.
+- Modeled spreads may be tighter than real JustMarkets fills. Demo validates this.
+- No news/fundamentals filter yet.
+
+## Recommended portfolio (starting point)
+
+A small basket of the strongest, logically-sound validated edges:
+
+| Slot | Instrument | Strategy |
+|---|---|---|
+| 1 | XAUUSD (gold) | H4 trend-following |
+| 2 | AUDUSD | H4 mean-reversion |
+| 3 | USDJPY | H4 mean-reversion |
+| 4 | XAGUSD (silver) | H4 trend-following |
+| (opt) | BTCUSD | H4 trend-following (if crypto risk acceptable) |
+
+Next steps: news/economic-calendar filter → MT5 connector → demo forward-test.
