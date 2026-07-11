@@ -68,25 +68,38 @@ def run_backtest(
     cost = cost or CostModel()
     config = config or BacktestConfig()
 
-    data = strategy.generate_signals(df).reset_index()
-    ts_col = data.columns[0]  # 'timestamp'
+    signals = strategy.generate_signals(df)
     vpp = _value_per_point(symbol)
 
+    # Extract to NumPy arrays for a fast hot loop (avoids slow pandas .iloc).
+    ts_index = signals.index.to_numpy()
+    open_ = signals["open"].to_numpy(dtype=float)
+    high = signals["high"].to_numpy(dtype=float)
+    low = signals["low"].to_numpy(dtype=float)
+    close = signals["close"].to_numpy(dtype=float)
+    atr_arr = signals["atr"].to_numpy(dtype=float)
+    sig = signals["signal"].to_numpy()
+
+    n = len(signals)
     # Resolve the trading window to integer index bounds (indicators still use all data).
-    ts = data[ts_col]
-    lo = 1 if trade_start is None else max(1, int((ts < trade_start).sum()))
-    hi = len(data) if trade_end is None else int((ts < trade_end).sum())
+    if trade_start is None:
+        lo = 1
+    else:
+        lo = max(1, int((signals.index < trade_start).sum()))
+    hi = n if trade_end is None else int((signals.index < trade_end).sum())
 
     balance = config.initial_balance
     equity_points: list[float] = []
     trades: list[Trade] = []
 
     position = None  # dict when in a trade
+    sl_mult = strategy.sl_atr_mult
+    tp_rr = strategy.tp_rr
+    spread = cost.spread_frac
 
     for i in range(lo, hi):
-        prev = data.iloc[i - 1]
-        bar = data.iloc[i]
-        o, h, l, c = bar["open"], bar["high"], bar["low"], bar["close"]
+        prev_sig = sig[i - 1]
+        o, h, l, c = open_[i], high[i], low[i], close[i]
 
         # ---- Manage an open position (check exits on this bar) ----
         if position is not None:
@@ -106,11 +119,11 @@ def run_backtest(
                     exit_price, reason = position["tp"], "tp"
 
             # Exit on opposite signal (trend flip) at this bar's open.
-            if exit_price is None and prev["signal"] == -side:
+            if exit_price is None and prev_sig == -side:
                 exit_price, reason = o, "signal_flip"
 
             if exit_price is not None:
-                fill = _apply_cost(exit_price, -side, cost)  # closing is opposite direction
+                fill = exit_price * (1 - side * spread)  # closing is opposite direction
                 pnl = side * (fill - position["entry"]) * vpp * position["lots"]
                 pnl -= cost.commission_per_lot * position["lots"]
                 balance += pnl
@@ -118,7 +131,7 @@ def run_backtest(
                 trades.append(
                     Trade(
                         entry_time=position["entry_time"],
-                        exit_time=bar[ts_col],
+                        exit_time=ts_index[i],
                         side=side,
                         entry=position["entry"],
                         exit=fill,
@@ -131,15 +144,13 @@ def run_backtest(
                 position = None
 
         # ---- Consider a new entry (from previous bar's signal) ----
-        if position is None and prev["signal"] != 0:
-            side = int(prev["signal"])
-            if side == -1 and not config.allow_short:
-                pass
-            else:
-                atr_val = prev["atr"]
+        if position is None and prev_sig != 0:
+            side = int(prev_sig)
+            if not (side == -1 and not config.allow_short):
+                atr_val = atr_arr[i - 1]
                 if atr_val and atr_val > 0:
-                    entry_fill = _apply_cost(o, side, cost)
-                    sl_dist = strategy.sl_atr_mult * atr_val
+                    entry_fill = o * (1 + side * spread)
+                    sl_dist = sl_mult * atr_val
                     sizing = calculate_position_size(
                         balance=balance,
                         stop_loss_distance_price=sl_dist,
@@ -149,10 +160,10 @@ def run_backtest(
                     if sizing.should_trade:
                         if side == 1:
                             sl = entry_fill - sl_dist
-                            tp = entry_fill + strategy.tp_rr * sl_dist
+                            tp = entry_fill + tp_rr * sl_dist
                         else:
                             sl = entry_fill + sl_dist
-                            tp = entry_fill - strategy.tp_rr * sl_dist
+                            tp = entry_fill - tp_rr * sl_dist
                         position = {
                             "side": side,
                             "entry": entry_fill,
@@ -160,7 +171,7 @@ def run_backtest(
                             "tp": tp,
                             "lots": sizing.lots,
                             "risk_amount": sizing.projected_risk,
-                            "entry_time": bar[ts_col],
+                            "entry_time": ts_index[i],
                         }
 
         # ---- Mark-to-market equity for drawdown tracking ----
@@ -171,7 +182,7 @@ def run_backtest(
         else:
             equity_points.append(balance)
 
-    equity_curve = pd.Series(equity_points, index=data[ts_col].iloc[lo:hi].values)
+    equity_curve = pd.Series(equity_points, index=ts_index[lo:hi])
     report = build_report(trades, equity_curve, config.initial_balance, config.bars_per_year)
     return report, trades, equity_curve
 
