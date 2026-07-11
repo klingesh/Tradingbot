@@ -6,6 +6,8 @@ Idea (classic, robust trend-following):
     * Momentum confirmation from RSI (don't fight momentum).
     * Enter on a fresh EMA crossover in the trend direction.
     * ATR-based stops so risk adapts to volatility.
+    * OPTIONAL higher-timeframe (HTF) filter: only trade in the direction of the
+      larger trend (e.g. daily), so we don't fight the big picture.
 
 This is a STARTING POINT to validate the pipeline, not a holy grail. We iterate
 on it using backtest expectancy, not gut feeling.
@@ -32,6 +34,10 @@ class EmaRsiSwing(Strategy):
         atr_period: int = 14,
         sl_atr_mult: float = 2.5,
         tp_rr: float = 2.0,
+        # Higher-timeframe trend filter
+        use_htf_filter: bool = False,
+        htf_rule: str = "1D",       # pandas resample rule for the higher timeframe
+        htf_ema_period: int = 50,   # EMA period on the higher timeframe
     ):
         self.fast = fast
         self.slow = slow
@@ -41,6 +47,26 @@ class EmaRsiSwing(Strategy):
         self.atr_period = atr_period
         self.sl_atr_mult = sl_atr_mult
         self.tp_rr = tp_rr
+        self.use_htf_filter = use_htf_filter
+        self.htf_rule = htf_rule
+        self.htf_ema_period = htf_ema_period
+
+    def _htf_trend(self, out: pd.DataFrame) -> pd.Series:
+        """
+        Compute the higher-timeframe trend direction (+1 up / -1 down), aligned
+        onto the base-timeframe index WITHOUT look-ahead.
+
+        Key anti-look-ahead step: a daily bar's trend is only "known" at that
+        day's close, so we shift the HTF series by 1 bar before mapping it down
+        to the intraday bars. Intraday bars therefore use the LAST COMPLETED
+        higher-timeframe bar only.
+        """
+        htf_close = out["close"].resample(self.htf_rule).last().dropna()
+        htf_ema = ema(htf_close, self.htf_ema_period)
+        htf_dir = (htf_close > htf_ema).map({True: 1, False: -1})
+        htf_dir = htf_dir.shift(1)  # only use the completed HTF bar
+        # Map the HTF direction down onto every base-timeframe bar.
+        return htf_dir.reindex(out.index, method="ffill")
 
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         out = df.copy()
@@ -56,6 +82,12 @@ class EmaRsiSwing(Strategy):
 
         long_entry = cross_up & (out["rsi"] > self.rsi_long_min)
         short_entry = cross_down & (out["rsi"] < self.rsi_short_max)
+
+        # Higher-timeframe alignment filter.
+        if self.use_htf_filter:
+            out["htf_dir"] = self._htf_trend(out)
+            long_entry = long_entry & (out["htf_dir"] == 1)
+            short_entry = short_entry & (out["htf_dir"] == -1)
 
         out["signal"] = 0
         out.loc[long_entry, "signal"] = 1
