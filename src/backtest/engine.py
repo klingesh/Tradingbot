@@ -55,7 +55,16 @@ def run_backtest(
     risk: RiskParams,
     cost: CostModel | None = None,
     config: BacktestConfig | None = None,
+    trade_start: pd.Timestamp | None = None,
+    trade_end: pd.Timestamp | None = None,
 ) -> tuple[BacktestReport, list[Trade], pd.Series]:
+    """
+    Run the backtest.
+
+    `trade_start` / `trade_end` (optional) restrict WHERE trades may be opened,
+    while indicators are still computed on the FULL `df` (so warm-up/history is
+    correct). This is what makes walk-forward out-of-sample testing honest.
+    """
     cost = cost or CostModel()
     config = config or BacktestConfig()
 
@@ -63,13 +72,18 @@ def run_backtest(
     ts_col = data.columns[0]  # 'timestamp'
     vpp = _value_per_point(symbol)
 
+    # Resolve the trading window to integer index bounds (indicators still use all data).
+    ts = data[ts_col]
+    lo = 1 if trade_start is None else max(1, int((ts < trade_start).sum()))
+    hi = len(data) if trade_end is None else int((ts < trade_end).sum())
+
     balance = config.initial_balance
     equity_points: list[float] = []
     trades: list[Trade] = []
 
     position = None  # dict when in a trade
 
-    for i in range(1, len(data)):
+    for i in range(lo, hi):
         prev = data.iloc[i - 1]
         bar = data.iloc[i]
         o, h, l, c = bar["open"], bar["high"], bar["low"], bar["close"]
@@ -157,7 +171,7 @@ def run_backtest(
         else:
             equity_points.append(balance)
 
-    equity_curve = pd.Series(equity_points, index=data[ts_col].iloc[1:].values)
+    equity_curve = pd.Series(equity_points, index=data[ts_col].iloc[lo:hi].values)
     report = build_report(trades, equity_curve, config.initial_balance, config.bars_per_year)
     return report, trades, equity_curve
 
