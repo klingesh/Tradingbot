@@ -87,10 +87,53 @@ def fetch_yahoo_ohlcv(
     return df
 
 
+def fetch_yahoo_h4(yahoo_symbol: str, days: int = 729, use_cache: bool = True) -> pd.DataFrame:
+    """
+    Fetch hourly data (Yahoo caps ~729 days) and resample to a 4-hour timeframe.
+
+    Gives ~2 years of H4 bars for forex/commodities - an apples-to-apples match
+    with the crypto H4 setup, and far more trades than daily.
+    """
+    import time as _time
+
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    safe = yahoo_symbol.replace("=", "").replace("^", "").replace("/", "")
+    cache_path = os.path.join(_CACHE_DIR, f"yahoo_{safe}_4h.csv")
+    if use_cache and os.path.exists(cache_path):
+        return pd.read_csv(cache_path, parse_dates=["timestamp"], index_col="timestamp")
+
+    period2 = int(_time.time())
+    period1 = period2 - int(days * 24 * 3600)
+    url = YAHOO_URL.format(symbol=urllib.parse.quote(yahoo_symbol))
+    url += f"?interval=1h&period1={period1}&period2={period2}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        payload = json.load(r)
+
+    res = payload["chart"]["result"][0]
+    q = res["indicators"]["quote"][0]
+    hourly = pd.DataFrame({
+        "timestamp": pd.to_datetime(res["timestamp"], unit="s", utc=True),
+        "open": q["open"], "high": q["high"], "low": q["low"],
+        "close": q["close"], "volume": q.get("volume", [0] * len(res["timestamp"])),
+    }).dropna(subset=["open", "high", "low", "close"])
+    hourly = hourly.drop_duplicates("timestamp").sort_values("timestamp").set_index("timestamp")
+
+    # Resample 1h -> 4h. Drop empty buckets (weekends/holidays leave gaps).
+    h4 = hourly.resample("4h").agg({
+        "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum",
+    }).dropna(subset=["open", "high", "low", "close"])
+
+    h4.to_csv(cache_path)
+    return h4
+
+
 if __name__ == "__main__":
     for name, (ysym, _, cls) in INSTRUMENTS.items():
         try:
             d = fetch_yahoo_ohlcv(ysym)
-            print(f"{name:8} ({cls:9}) {len(d):>5} bars  {d.index[0].date()} -> {d.index[-1].date()}")
+            h4 = fetch_yahoo_h4(ysym)
+            print(f"{name:8} ({cls:9}) daily={len(d):>5}  H4={len(h4):>5}  "
+                  f"H4 range {h4.index[0].date()} -> {h4.index[-1].date()}")
         except Exception as e:
             print(f"{name:8} FAILED: {e!r}")
