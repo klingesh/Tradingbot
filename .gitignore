@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Cached market data (re-downloaded on demand)
+data_cache/
+
+# Secrets / broker credentials - NEVER commit these
+.env
+*.secret
+credentials.json
+mt5_login.json
+
+# OS / editor
+.DS_Store
+Thumbs.db

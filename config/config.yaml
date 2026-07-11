@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# Trading bot configuration
+# ---------------------------------------------------------------------------
+
+account:
+  # Development safety switch. Keep "demo" until a strategy is proven.
+  mode: demo            # demo | live
+  is_cent_account: true # JustMarkets cent account (balance shown in cents)
+
+risk:
+  # Percent of account balance to risk per trade (your stated 2-5% range).
+  risk_percent_per_trade: 2.0
+
+  # Hard safety caps (the survival layer).
+  max_risk_percent_per_trade: 5.0   # never risk more than this, ever
+  max_open_trades: 3                # cap concurrent positions
+  max_daily_loss_percent: 6.0       # stop trading for the day past this loss
+  max_total_drawdown_percent: 20.0  # kill switch: halt the bot entirely
+
+  # If the smallest allowed lot would risk MORE than risk_percent, what to do:
+  #   skip  -> do not take the trade (recommended, safest)
+  #   min   -> take the minimum lot anyway (accepts higher-than-target risk)
+  on_min_lot_exceeds_risk: skip
+
+# Symbols to trade. Start crypto-only for the first strategy.
+# NOTE: exact symbol names must match what JustMarkets MT5 lists
+#       (e.g. "BTCUSD" vs "BTCUSD.c" on cent accounts - we confirm via connector).
+symbols:
+  - name: BTCUSD
+    enabled: true
+  - name: ETHUSD
+    enabled: true
+
+strategy:
+  name: ema_rsi_swing   # implemented in a later phase
+  timeframe: H4         # swing timeframe
