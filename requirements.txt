@@ -1,7 +1,9 @@
 # Core
 PyYAML>=6.0
 
-# MT5 connector (Windows only - install when running the live/demo connector)
+# MT5 connector (Windows only). Install on your Windows laptop:
+#   pip install MetaTrader5
+# Left commented so `pip install -r requirements.txt` works on Linux/Mac too.
 # MetaTrader5>=5.0.45
 
 # Data / analysis

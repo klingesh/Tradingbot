@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------------------
+# LIVE / DEMO trading configuration (used by live_trader.py on Windows)
+# ---------------------------------------------------------------------------
+
+# Start in dry_run: the bot computes signals and sizing and LOGS what it WOULD
+# do, but sends no orders. Flip to false only after you've watched it behave.
+dry_run: true
+
+connection:
+  # Leave login/password/server blank to use the account already logged into
+  # your MT5 terminal (recommended for demo). Fill only if you must.
+  login:
+  password:
+  server:
+  # path: "C:/Program Files/JustMarkets MT5/terminal64.exe"
+
+# Broker's REAL symbol names. Fill these from scripts/check_mt5.py output.
+# (Cent accounts often use suffixes like XAUUSD.c)
+symbols:
+  GOLD:   XAUUSD
+  SILVER: XAGUSD
+  AUDUSD: AUDUSD
+  USDJPY: USDJPY
+
+risk:
+  risk_percent_per_trade: 2.0
+  max_risk_percent_per_trade: 5.0
+  max_open_trades: 4                # one per instrument in the portfolio
+  max_daily_loss_percent: 6.0       # halt new trades for the day past this loss
+  max_total_drawdown_percent: 20.0  # KILL SWITCH: stop the bot entirely
+
+news_filter:
+  enabled: true          # ON for live (protects vs news-time spread widening)
+  before_minutes: 120
+  after_minutes: 120
+
+run:
+  magic_number: 990011   # tags this bot's trades
+  poll_seconds: 60       # how often to check for a new closed bar
+  candles_lookback: 400  # bars fetched per check (enough for indicators)
