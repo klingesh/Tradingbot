@@ -75,3 +75,31 @@ A small basket of the strongest, logically-sound validated edges:
 | (opt) | BTCUSD | H4 trend-following (if crypto risk acceptable) |
 
 Next steps: news/economic-calendar filter → MT5 connector → demo forward-test.
+
+
+---
+
+## News / economic-calendar filter (fundamentals layer)
+
+We added a high-impact event calendar (NFP always the first Friday; FOMC on
+published dates) and an **avoid-mode** filter that blocks new entries in a
+window around events. Tested on the recommended portfolio, with vs without:
+
+| Instrument | Filter | PF | Return | Sharpe |
+|---|---|---|---|---|
+| Gold | off / on | 1.87 / 1.86 | +13.90% / +13.85% | 1.35 / 1.32 |
+| Silver | off / on | 1.61 / 1.41 | +11.02% / +7.83% | 0.85 / 0.63 |
+| AUDUSD | off / on | 1.66 / 1.67 | +21.13% / +17.70% | 1.35 / 1.32 |
+| USDJPY | off / on | 1.32 / 1.32 | +9.11% / +9.11% | 0.64 / 0.64 |
+
+**Finding:** on price-only backtests the avoid-filter is neutral-to-slightly
+negative for these *swing* strategies. Trades are held for days, so a single
+event during the hold is rarely decisive, and the move sometimes helps.
+
+**But we keep it, defaulting OFF for backtest / ON for live**, because a
+backtest models a *fixed* spread. In reality spreads widen sharply and slippage
+spikes during NFP/FOMC - a real cost the historical data can't show. The live
+bot will also use the ForexFactory high-impact feed (CPI, PPI, rate decisions).
+
+Later option: **surprise mode** - trade the direction of a data surprise
+(actual vs forecast) rather than avoiding it. More complex; deferred.

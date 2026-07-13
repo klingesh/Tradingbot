@@ -34,3 +34,13 @@ symbols:
 strategy:
   name: ema_rsi_swing   # implemented in a later phase
   timeframe: H4         # swing timeframe
+
+news_filter:
+  # Avoid-mode: block new entries around high-impact events.
+  # Backtests show this is neutral for swing trades, but it protects against
+  # real news-time spread widening / slippage, so default ON for live trading.
+  enabled_backtest: false
+  enabled_live: true
+  before_minutes: 120
+  after_minutes: 120
+  currencies: [USD]     # events to avoid (USD is dominant for our portfolio)

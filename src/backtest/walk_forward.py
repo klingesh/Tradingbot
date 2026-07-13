@@ -48,6 +48,7 @@ def walk_forward(
     step_bars: int = 500,
     min_trades_is: int = 12,
     objective: str = "expectancy_r",
+    blackout: "np.ndarray | None" = None,
 ) -> WalkForwardResult:
     keys = list(param_grid.keys())
     combos = [dict(zip(keys, vals)) for vals in product(*param_grid.values())]
@@ -73,7 +74,7 @@ def walk_forward(
             strat = strategy_factory(**params)
             rep, trades, _ = run_backtest(
                 df, strat, symbol, risk, cost, base_config,
-                trade_start=is_start_ts, trade_end=oos_start_ts,
+                trade_start=is_start_ts, trade_end=oos_start_ts, blackout=blackout,
             )
             if rep.num_trades < min_trades_is:
                 continue
@@ -93,7 +94,7 @@ def walk_forward(
         strat = strategy_factory(**chosen)
         oos_rep, oos_trades, oos_eq = run_backtest(
             df, strat, symbol, risk, cost, oos_config,
-            trade_start=oos_start_ts, trade_end=oos_end_ts,
+            trade_start=oos_start_ts, trade_end=oos_end_ts, blackout=blackout,
         )
 
         all_oos_trades.extend(oos_trades)

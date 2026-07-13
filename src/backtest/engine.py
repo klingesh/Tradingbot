@@ -57,6 +57,7 @@ def run_backtest(
     config: BacktestConfig | None = None,
     trade_start: pd.Timestamp | None = None,
     trade_end: pd.Timestamp | None = None,
+    blackout: "np.ndarray | None" = None,
 ) -> tuple[BacktestReport, list[Trade], pd.Series]:
     """
     Run the backtest.
@@ -64,6 +65,9 @@ def run_backtest(
     `trade_start` / `trade_end` (optional) restrict WHERE trades may be opened,
     while indicators are still computed on the FULL `df` (so warm-up/history is
     correct). This is what makes walk-forward out-of-sample testing honest.
+
+    `blackout` (optional) is a full-length boolean array aligned to `df`: when
+    True at bar i, no NEW entry is opened on that bar (news avoid-mode).
     """
     cost = cost or CostModel()
     config = config or BacktestConfig()
@@ -144,7 +148,8 @@ def run_backtest(
                 position = None
 
         # ---- Consider a new entry (from previous bar's signal) ----
-        if position is None and prev_sig != 0:
+        blocked = blackout is not None and blackout[i]
+        if position is None and prev_sig != 0 and not blocked:
             side = int(prev_sig)
             if not (side == -1 and not config.allow_short):
                 atr_val = atr_arr[i - 1]
