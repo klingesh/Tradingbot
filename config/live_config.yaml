@@ -4,7 +4,7 @@
 
 # Start in dry_run: the bot computes signals and sizing and LOGS what it WOULD
 # do, but sends no orders. Flip to false only after you've watched it behave.
-dry_run: true
+dry_run: false
 
 connection:
   # Leave login/password/server blank to use the account already logged into
