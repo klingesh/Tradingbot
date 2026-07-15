@@ -1,7 +1,10 @@
+# Python 3.10 - 3.14 supported. (Indicators are hand-written in pure pandas,
+# so there is no numba/pandas-ta dependency to break on newer Pythons.)
+
 # Core
 PyYAML>=6.0
 
-# MT5 connector (Windows only). Install on your Windows laptop:
+# MT5 connector (Windows only). Install separately on your Windows laptop:
 #   pip install MetaTrader5
 # Left commented so `pip install -r requirements.txt` works on Linux/Mac too.
 # MetaTrader5>=5.0.45
@@ -9,9 +12,6 @@ PyYAML>=6.0
 # Data / analysis
 pandas>=2.0
 numpy>=1.24
-
-# Technical indicators (pure python, cross-platform)
-pandas-ta>=0.3.14b
 
 # Testing
 pytest>=8.0
