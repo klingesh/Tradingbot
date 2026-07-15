@@ -14,13 +14,14 @@ connection:
   server:
   # path: "C:/Program Files/JustMarkets MT5/terminal64.exe"
 
-# Broker's REAL symbol names. Fill these from scripts/check_mt5.py output.
-# (Cent accounts often use suffixes like XAUUSD.c)
+# Broker's REAL symbol names (from scripts/check_mt5.py).
+# NOTE: this JustMarkets ECN demo uses the ".ecn" suffix. Your live CENT account
+# will likely use different names - re-run check_mt5.py before going live there.
 symbols:
-  GOLD:   XAUUSD
-  SILVER: XAGUSD
-  AUDUSD: AUDUSD
-  USDJPY: USDJPY
+  GOLD:   XAUUSD.ecn
+  SILVER: XAGUSD.ecn
+  AUDUSD: AUDUSD.ecn
+  USDJPY: USDJPY.ecn
 
 risk:
   risk_percent_per_trade: 2.0

@@ -165,6 +165,29 @@ class LiveTrader:
         finally:
             self.conn.shutdown()
 
+    def run_once(self) -> None:
+        """Connect, evaluate every instrument ONCE, log decisions, disconnect.
+
+        A fast, safe validation tool - shows what the bot would do right now
+        without committing to the long-running loop.
+        """
+        c = self.cfg.conn
+        acct = self.conn.connect(
+            login=c.get("login") or None,
+            password=c.get("password") or None,
+            server=c.get("server") or None,
+            path=c.get("path") or None,
+        )
+        self._start_balance = acct.balance
+        log.info("Connected. Login %s  Balance %.2f %s  %s",
+                 acct.login, acct.balance, acct.currency,
+                 "[DRY RUN]" if self.cfg.dry_run else "[LIVE ORDERS]")
+        try:
+            self._tick()
+        finally:
+            self.conn.shutdown()
+        log.info("One-shot check complete.")
+
     def _tick(self) -> None:
         self._refresh_news()
         acct = self.conn.account_info()
@@ -250,10 +273,20 @@ class LiveTrader:
                 log.info("%s close result: %s", tag, res)
 
 
-def run(config_path: str = "config/live_config.yaml") -> None:
+def _setup_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+
+
+def run(config_path: str = "config/live_config.yaml") -> None:
+    _setup_logging()
     cfg = TraderConfig.load(config_path)
     LiveTrader(cfg).start()
+
+
+def run_once(config_path: str = "config/live_config.yaml") -> None:
+    _setup_logging()
+    cfg = TraderConfig.load(config_path)
+    LiveTrader(cfg).run_once()
