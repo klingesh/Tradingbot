@@ -30,6 +30,7 @@ from ..news.calendar import ForexFactoryCalendar
 from ..news.filter import NewsFilter
 from .portfolio import DEFAULT_PORTFOLIO, PortfolioSlot
 from .decision import decide
+from .journal import CSVJournal
 
 log = logging.getLogger("trader")
 
@@ -83,6 +84,7 @@ class LiveTrader:
         self.cfg = cfg
         self.portfolio = portfolio or DEFAULT_PORTFOLIO
         self.conn = MT5Connector(magic=cfg.magic)
+        self.journal = CSVJournal()
         self._raw_events: list = []
         self._filter_cache: dict = {}
         self._news_day = None
@@ -197,6 +199,10 @@ class LiveTrader:
     def _tick(self) -> None:
         self._refresh_news()
         acct = self.conn.account_info()
+        try:
+            self.journal.log_equity(acct.balance, acct.equity)
+        except Exception as e:
+            log.debug("journal equity write failed: %s", e)
         halt_new = self._check_kill_switches(acct.equity) or self._halted
         open_bot = self.conn.bot_positions()
         open_count = len(open_bot)
@@ -264,6 +270,7 @@ class LiveTrader:
 
         if d.action == "skip":
             log.info("%s SKIP: %s", tag, d.reason)
+            self._journal(slot.logical, "skip", d, reason=d.reason)
             return
 
         if d.action == "enter":
@@ -271,19 +278,33 @@ class LiveTrader:
                      tag, "BUY" if d.side == 1 else "SELL", d.lots, d.sl, d.tp, d.reason)
             if self.cfg.dry_run:
                 log.info("%s [DRY RUN] order not sent.", tag)
+                self._journal(slot.logical, "enter_dryrun", d)
                 return
             res = self.conn.place_market_order(symbol, d.side, d.lots, d.sl, d.tp,
                                                comment=slot.logical)
             log.info("%s order result: %s", tag, res)
+            self._journal(slot.logical, "enter", d, retcode=res.get("retcode"))
 
         elif d.action == "close":
             log.info("%s CLOSE position (%s)", tag, d.reason)
             if self.cfg.dry_run:
                 log.info("%s [DRY RUN] close not sent.", tag)
+                self._journal(slot.logical, "close_dryrun", d, reason=d.reason)
                 return
             for p in positions:
                 res = self.conn.close_position(p)
                 log.info("%s close result: %s", tag, res)
+                self._journal(slot.logical, "close", d, retcode=res.get("retcode"),
+                              reason=d.reason)
+
+    def _journal(self, symbol, action, d, retcode="", reason="") -> None:
+        try:
+            self.journal.log_action(
+                symbol=symbol, action=action, side=d.side, lots=d.lots,
+                sl=d.sl, tp=d.tp, retcode=retcode or "", reason=reason or d.reason,
+            )
+        except Exception as e:
+            log.debug("journal action write failed: %s", e)
 
 
 def _setup_logging() -> None:

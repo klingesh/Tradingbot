@@ -236,6 +236,32 @@ class MT5Connector:
         """Only positions opened by THIS bot (matched by magic number)."""
         return [p for p in self.get_open_positions(symbol) if p.magic == self.magic]
 
+    def closed_deals(self, days: int = 30) -> list[dict]:
+        """
+        Realized closing deals for THIS bot over the last `days` (source of truth
+        for live P&L). Returns dicts with symbol, profit, volume, price, time.
+        """
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        deals = mt5.history_deals_get(now - timedelta(days=days), now)
+        if deals is None:
+            return []
+        out = []
+        for d in deals:
+            # DEAL_ENTRY_OUT deals carry the realized profit of a closed position.
+            if d.magic == self.magic and d.entry == mt5.DEAL_ENTRY_OUT:
+                out.append({
+                    "time": pd.to_datetime(d.time, unit="s", utc=True),
+                    "symbol": d.symbol,
+                    "volume": d.volume,
+                    "price": d.price,
+                    "profit": d.profit,
+                    "commission": getattr(d, "commission", 0.0),
+                    "swap": getattr(d, "swap", 0.0),
+                    "comment": d.comment,
+                })
+        return out
+
     # ----- orders -----
     def _filling_mode(self, symbol: str) -> int:
         """Pick a supported order-filling mode for the symbol."""
