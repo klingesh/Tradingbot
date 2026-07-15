@@ -11,13 +11,16 @@ MetaTrader 5 (JustMarkets) account.
 
 ## Status / Roadmap
 
-- [x] **Phase 1a** — Project scaffold + risk/position-sizing engine  <-- WE ARE HERE
-- [ ] **Phase 1b** — MT5 connector (Windows: connect, data, orders)
-- [ ] **Phase 2**  — First swing strategy (technical analysis)
-- [ ] **Phase 3**  — News / economic-calendar filter (fundamentals)
-- [ ] **Phase 4**  — Backtesting + expectancy/drawdown reporting
-- [ ] **Phase 5**  — Demo (paper) trading run
+- [x] **Phase 1a** — Project scaffold + risk/position-sizing engine
+- [x] **Phase 2**  — Strategies (trend / breakout / mean-reversion)
+- [x] **Phase 4**  — Backtesting + walk-forward + expectancy/drawdown reporting
+- [x] **Phase 3**  — News / economic-calendar filter (fundamentals)
+- [x] **Phase 1b** — MT5 connector + live trader (Windows)  <-- WE ARE HERE
+- [ ] **Phase 5**  — Demo (paper) trading run on your laptop  ← NEXT (see docs/WINDOWS_SETUP.md)
 - [ ] **Phase 6**  — Small live deployment (Windows VPS + strict risk caps)
+
+Research results and the recommended portfolio: see `docs/RESEARCH_FINDINGS.md`.
+How to run it on your laptop: see `docs/WINDOWS_SETUP.md`.
 
 ## Important environment notes
 
