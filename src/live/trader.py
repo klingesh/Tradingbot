@@ -83,7 +83,8 @@ class LiveTrader:
         self.cfg = cfg
         self.portfolio = portfolio or DEFAULT_PORTFOLIO
         self.conn = MT5Connector(magic=cfg.magic)
-        self._news: NewsFilter | None = None
+        self._raw_events: list = []
+        self._filter_cache: dict = {}
         self._news_day = None
         self._last_bar: dict[str, pd.Timestamp] = {}
         self._start_balance: float | None = None
@@ -94,7 +95,7 @@ class LiveTrader:
     # ---- news ----
     def _refresh_news(self) -> None:
         today = datetime.now(timezone.utc).date()
-        if self._news is not None and self._news_day == today:
+        if self._news_day == today and self._raw_events:
             return
         cal = ForexFactoryCalendar()
         events = []
@@ -105,7 +106,8 @@ class LiveTrader:
                 events.extend(cal.events(week=wk, min_impact="High"))
             except Exception as e:
                 log.debug("news feed '%s' unavailable: %s", wk, e)
-        self._news = NewsFilter(events, self.cfg.news_before, self.cfg.news_after)
+        self._raw_events = events
+        self._filter_cache = {}   # invalidate per-currency filters
         self._news_day = today
         if events:
             log.info("Refreshed news calendar: %d high-impact events this week", len(events))
@@ -113,15 +115,16 @@ class LiveTrader:
             log.warning("No news events fetched; proceeding without blackout.")
 
     def _in_blackout(self, currencies: set[str]) -> bool:
-        if not self.cfg.news_enabled or self._news is None:
+        """Blackout scoped to the instrument's relevant currencies only."""
+        if not self.cfg.news_enabled:
             return False
-        # Build a currency-scoped view lazily is overkill; reuse filter but the
-        # stored events already include all currencies, so scope here:
-        now = pd.Timestamp.now(tz="UTC")
-        # NewsFilter stores all currencies; approximate by checking the global
-        # filter (dominant driver USD). For per-currency precision we could keep
-        # separate filters; USD covers our portfolio's main risk.
-        return self._news.is_blackout(now)
+        key = frozenset(currencies)
+        nf = self._filter_cache.get(key)
+        if nf is None:
+            nf = NewsFilter(self._raw_events, self.cfg.news_before,
+                            self.cfg.news_after, currencies=set(currencies))
+            self._filter_cache[key] = nf
+        return nf.is_blackout(pd.Timestamp.now(tz="UTC"))
 
     # ---- safety ----
     def _check_kill_switches(self, equity: float) -> bool:
