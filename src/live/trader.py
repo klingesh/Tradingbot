@@ -96,18 +96,21 @@ class LiveTrader:
         today = datetime.now(timezone.utc).date()
         if self._news is not None and self._news_day == today:
             return
-        try:
-            cal = ForexFactoryCalendar()
-            events = []
-            for wk in ("lastweek", "thisweek", "nextweek"):
+        cal = ForexFactoryCalendar()
+        events = []
+        # Fetch each week independently so one missing feed (404) doesn't wipe
+        # out the others. In practice only "thisweek" is reliably published.
+        for wk in ("lastweek", "thisweek", "nextweek"):
+            try:
                 events.extend(cal.events(week=wk, min_impact="High"))
-            self._news = NewsFilter(events, self.cfg.news_before, self.cfg.news_after)
-            self._news_day = today
-            log.info("Refreshed news calendar: %d high-impact events", len(events))
-        except Exception as e:
-            log.warning("Could not refresh news (%s); proceeding without blackout", e)
-            self._news = NewsFilter([], self.cfg.news_before, self.cfg.news_after)
-            self._news_day = today
+            except Exception as e:
+                log.debug("news feed '%s' unavailable: %s", wk, e)
+        self._news = NewsFilter(events, self.cfg.news_before, self.cfg.news_after)
+        self._news_day = today
+        if events:
+            log.info("Refreshed news calendar: %d high-impact events this week", len(events))
+        else:
+            log.warning("No news events fetched; proceeding without blackout.")
 
     def _in_blackout(self, currencies: set[str]) -> bool:
         if not self.cfg.news_enabled or self._news is None:
@@ -225,6 +228,13 @@ class LiveTrader:
         bid, ask = self.conn.current_tick(symbol)
         blackout = self._in_blackout(slot.news_currencies)
 
+        last = signals.iloc[-1]
+        log.info(
+            "[%s/%s] bar=%s close=%.5f signal=%+d position=%+d%s",
+            slot.logical, symbol, str(latest_time), float(last["close"]),
+            int(last["signal"]), pos_side, "  [NEWS BLACKOUT]" if blackout else "",
+        )
+
         d = decide(
             signals=signals, position_side=pos_side, bid=bid, ask=ask,
             balance=acct.balance, spec=spec, risk=self.cfg.risk,
@@ -246,7 +256,7 @@ class LiveTrader:
     def _execute(self, slot, symbol, d, positions) -> None:
         tag = f"[{slot.logical}/{symbol}]"
         if d.action in ("nothing", "hold"):
-            log.debug("%s %s (%s)", tag, d.action, d.reason)
+            log.info("%s -> %s (%s)", tag, d.action, d.reason)
             return
 
         if d.action == "skip":
