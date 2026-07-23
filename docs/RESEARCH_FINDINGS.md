@@ -128,3 +128,33 @@ gold/silver) but is dominated by our existing trend strategies there and loses o
 the other three instruments. Its big in-sample BTC result collapsed out-of-sample
 — a clean example of walk-forward catching overfitting before any money is risked.
 The code is kept as a validated experiment for reference.
+
+
+---
+
+## Order Block & Liquidity Sweep — tested (1 candidate found)
+
+Mined two more concept families from the EA repo and walk-forward tested them:
+`src/strategy/order_block.py` (SMC continuation) and
+`src/strategy/liquidity_sweep.py` (ICT stop-hunt reversal).
+
+Order Block continuation (OOS):
+
+| Instrument | PF | Return | Max DD | Sharpe | Verdict |
+|---|---|---|---|---|---|
+| BTC | 0.71 | -15.5% | 29.1% | -0.63 | loses |
+| Gold | 1.21 | +6.7% | 8.3% | 0.56 | worse than trend |
+| **Silver** | **1.67** | **+19.2%** | **5.9%** | **1.30** | **beats incumbent trend** |
+| AUDUSD | 0.36 | -19.0% | 26.8% | -1.18 | loses |
+| USDJPY | 1.23 | +9.8% | 9.2% | 0.50 | worse than MR |
+
+Liquidity Sweep reversal (OOS): positive but dominated on gold/silver/AUD/JPY
+(+2.8%/+9.8%/+9.8%/+18.3%), loses on BTC. No slot won. **Rejected.**
+
+**Candidate found: Order Block on SILVER.** It is a Pareto improvement over the
+incumbent silver trend strategy (+19.2% vs +11%, Sharpe 1.30 vs 0.85, 5.9% vs
+6.9% max DD) — same instrument, period and trend filter, just better entry
+timing. Caveat: ~26 OOS trades is a modest sample, and we tested ~15
+strategy×instrument combos, so multiple-comparisons luck can't be ruled out.
+**Decision: do NOT blind-swap; A/B test Silver-OB vs the trend version on demo.**
+All other OB/Sweep results rejected.
