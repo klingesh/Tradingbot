@@ -158,3 +158,31 @@ timing. Caveat: ~26 OOS trades is a modest sample, and we tested ~15
 strategy×instrument combos, so multiple-comparisons luck can't be ruled out.
 **Decision: do NOT blind-swap; A/B test Silver-OB vs the trend version on demo.**
 All other OB/Sweep results rejected.
+
+
+---
+
+## Volatility targeting — KEPT (selectively)
+
+Evidence-backed enhancement (Moreira & Muir; vol-scaled momentum literature):
+scale the risk fraction inversely to how current volatility compares to its own
+trailing norm (`src/risk/vol_target.py`). Walk-forward, WITH vs WITHOUT:
+
+| Instrument | Strategy | Sharpe off→on | Return off→on | Max DD off→on |
+|---|---|---|---|---|
+| BTC | trend | 0.76 → 0.31 | +19.6% → +6.2% | 13.5% → 15.5% |
+| Gold | trend | 1.35 → 0.88 | +13.9% → +8.9% | 5.9% → 8.3% |
+| Silver | trend | 0.85 → 0.99 | +11.0% → +14.7% | 6.9% → 6.2% |
+| AUDUSD | mean-rev | 1.27 → **1.54** | +18.9% → +25.0% | 9.1% → 8.8% |
+| USDJPY | mean-rev | 1.18 → **1.54** | +17.9% → +24.7% | 11.9% → **8.4%** |
+
+**Finding: it is NOT universally good.** It HURTS trend-following (de-risks
+exactly during the volatile expansions that produce trend's skew-driven tail
+winners) but clearly HELPS mean-reversion (protects it in turbulent regimes).
+
+**Decision: apply it selectively — ON for the mean-reversion sleeve (AUDUSD,
+USDJPY), OFF for the trend sleeve (gold, silver, BTC).** This is a principled,
+mechanism-based rule (by strategy type), not per-instrument fitting. Wired into
+both backtest (`vol_scalar`) and live (`PortfolioSlot.use_vol_target` →
+`decide(risk_scalar=...)`). Net effect on the FX slots: OOS Sharpe ~1.2 → ~1.5
+with lower drawdown.

@@ -58,6 +58,7 @@ def run_backtest(
     trade_start: pd.Timestamp | None = None,
     trade_end: pd.Timestamp | None = None,
     blackout: "np.ndarray | None" = None,
+    vol_scalar: "np.ndarray | None" = None,
 ) -> tuple[BacktestReport, list[Trade], pd.Series]:
     """
     Run the backtest.
@@ -156,11 +157,21 @@ def run_backtest(
                 if atr_val and atr_val > 0:
                     entry_fill = o * (1 + side * spread)
                     sl_dist = sl_mult * atr_val
+                    # Volatility-targeting overlay: scale the risk fraction.
+                    eff_risk = risk
+                    if vol_scalar is not None:
+                        s = vol_scalar[i]
+                        if s and s > 0:
+                            eff_risk = RiskParams(
+                                risk.risk_percent_per_trade * s,
+                                risk.max_risk_percent_per_trade,
+                                risk.on_min_lot_exceeds_risk,
+                            )
                     sizing = calculate_position_size(
                         balance=balance,
                         stop_loss_distance_price=sl_dist,
                         symbol=symbol,
-                        risk=risk,
+                        risk=eff_risk,
                     )
                     if sizing.should_trade:
                         if side == 1:

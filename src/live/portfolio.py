@@ -27,6 +27,10 @@ class PortfolioSlot:
     strategy_factory: Callable[..., Strategy]
     params: dict
     news_currencies: set[str] = field(default_factory=lambda: {"USD"})
+    # Volatility targeting helps mean-reversion (protects it in turbulent
+    # regimes) but HURTS trend-following (cuts its skew-driven tail winners),
+    # per our walk-forward test. So default ON only for mean-reversion slots.
+    use_vol_target: bool = False
 
     def build(self) -> Strategy:
         return self.strategy_factory(**self.params)
@@ -43,8 +47,11 @@ MEANREV_PARAMS = dict(
 )
 
 DEFAULT_PORTFOLIO: list[PortfolioSlot] = [
-    PortfolioSlot("GOLD",   "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}),
-    PortfolioSlot("SILVER", "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}),
-    PortfolioSlot("AUDUSD", "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD", "AUD"}),
-    PortfolioSlot("USDJPY", "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD", "JPY"}),
+    # Trend slots: vol targeting OFF (it cuts their skew-driven tail winners).
+    PortfolioSlot("GOLD",   "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}, use_vol_target=False),
+    PortfolioSlot("SILVER", "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}, use_vol_target=False),
+    # Mean-reversion slots: vol targeting ON (protects them in turbulent regimes;
+    # lifted OOS Sharpe ~1.2 -> ~1.5 and cut drawdown in the walk-forward).
+    PortfolioSlot("AUDUSD", "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD", "AUD"}, use_vol_target=True),
+    PortfolioSlot("USDJPY", "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD", "JPY"}, use_vol_target=True),
 ]
