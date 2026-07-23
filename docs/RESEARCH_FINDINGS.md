@@ -103,3 +103,28 @@ bot will also use the ForexFactory high-impact feed (CPI, PPI, rate decisions).
 
 Later option: **surprise mode** - trade the direction of a data surprise
 (actual vs forecast) rather than avoiding it. More complex; deferred.
+
+
+---
+
+## Fair Value Gap (FVG) strategy — tested, REJECTED
+
+Mined the Fair Value Gap concept from the EA indicator repo (SMC pack, Indi 39/92)
+and implemented an FVG pullback-continuation strategy (`src/strategy/fvg.py`):
+enter on a retrace into a fresh 3-candle imbalance, aligned with the daily trend.
+
+Walk-forward out-of-sample results:
+
+| Instrument | PF | Return | Max DD | Sharpe | Verdict |
+|---|---|---|---|---|---|
+| BTC | 0.84 | −12.1% | 30.4% | −0.19 | loses (in-sample +27% was overfit) |
+| Gold | 1.14 | +12.2% | 26.6% | 0.58 | profitable but worse than trend (Sharpe 1.35, 5.9% DD) |
+| Silver | 1.24 | +11.9% | 14.2% | 0.72 | profitable but worse than trend (Sharpe 0.85) |
+| AUDUSD | 0.60 | −25.7% | 36.9% | −0.94 | loses badly |
+| USDJPY | 0.65 | −8.9% | 22.8% | −0.36 | loses |
+
+**Decision: NOT added to the portfolio.** FVG is a real concept (positive OOS on
+gold/silver) but is dominated by our existing trend strategies there and loses on
+the other three instruments. Its big in-sample BTC result collapsed out-of-sample
+— a clean example of walk-forward catching overfitting before any money is risked.
+The code is kept as a validated experiment for reference.
