@@ -1,10 +1,17 @@
 # ---------------------------------------------------------------------------
-# LIVE / DEMO trading configuration (used by live_trader.py on Windows)
+# LIVE / DEMO trading configuration TEMPLATE
+# ---------------------------------------------------------------------------
+# FIRST-RUN SETUP: copy this file to config/live_config.yaml, then edit it.
+#   Windows:  copy config\live_config.example.yaml config\live_config.yaml
+#   Mac/Linux: cp config/live_config.example.yaml config/live_config.yaml
+#
+# Your real config/live_config.yaml is gitignored, so your personal settings
+# (symbols, risk, dry_run) will NEVER conflict with future `git pull`s.
 # ---------------------------------------------------------------------------
 
-# Start in dry_run: the bot computes signals and sizing and LOGS what it WOULD
-# do, but sends no orders. Flip to false only after you've watched it behave.
-dry_run: false
+# Keep dry_run: true until you've watched the bot behave. It then LOGS what it
+# WOULD do without sending orders. Set to false to place (demo!) orders.
+dry_run: true
 
 connection:
   # Leave login/password/server blank to use the account already logged into
@@ -14,25 +21,22 @@ connection:
   server:
   # path: "C:/Program Files/JustMarkets MT5/terminal64.exe"
 
-# Broker's REAL symbol names (from scripts/check_mt5.py).
-# NOTE: this JustMarkets ECN demo uses the ".ecn" suffix. GOLD/SILVER/AUDUSD/
-# USDJPY are CONFIRMED; the rest are best-guesses -> RE-RUN check_mt5.py and
-# correct any that show a different name (or "NO MATCH").
+# Broker's REAL symbol names. VERIFY these with: python scripts/check_mt5.py
+# (These are the confirmed JustMarkets ECN-demo names; other brokers differ.)
 symbols:
-  GOLD:     XAUUSD.ecn      # confirmed
-  SILVER:   XAGUSD.ecn      # confirmed
-  AUDUSD:   AUDUSD.ecn      # confirmed
-  USDJPY:   USDJPY.ecn      # confirmed
-  NATGAS:   XNGUSD.ecn      # confirmed
-  PLATINUM: XPTUSD.ecn      # confirmed
-  GBPJPY:   GBPJPY.ecn      # confirmed
-  BRENT:    BRENT.ecn       # confirmed
+  GOLD:     XAUUSD.ecn
+  SILVER:   XAGUSD.ecn
+  AUDUSD:   AUDUSD.ecn
+  USDJPY:   USDJPY.ecn
+  NATGAS:   XNGUSD.ecn
+  PLATINUM: XPTUSD.ecn
+  GBPJPY:   GBPJPY.ecn
+  BRENT:    BRENT.ecn
   # BTC:    BTCUSD.ecn      # optional crypto slot (see portfolio.OPTIONAL_CRYPTO)
 
 risk:
   # With 8 instruments, 2% each = up to 16% at risk if all fire at once. Since
-  # the basket is diversified you don't need much per trade - consider lowering
-  # to ~1.0-1.5% as the universe grows. Kept at 2% per your preference.
+  # the basket is diversified, consider ~1.0-1.5% per trade as the universe grows.
   risk_percent_per_trade: 2.0
   max_risk_percent_per_trade: 5.0
   max_open_trades: 8                # one per instrument in the portfolio

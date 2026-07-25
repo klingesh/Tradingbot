@@ -40,6 +40,18 @@ pip install -r requirements.txt
 pip install MetaTrader5
 ```
 
+## 2b. Create your live config (first run only)
+
+Your personal config is gitignored so it never conflicts with `git pull`. Copy
+the template once:
+
+```bat
+copy config\live_config.example.yaml config\live_config.yaml
+```
+
+(Mac/Linux: `cp config/live_config.example.yaml config/live_config.yaml`.)
+Then edit `config/live_config.yaml` in the next steps.
+
 ## 3. Discover your symbol names + specs (STEP 1 script)
 
 Cent accounts often rename symbols (e.g. `XAUUSD.c`). Find the real names:

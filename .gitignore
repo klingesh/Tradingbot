@@ -17,6 +17,10 @@ data_cache/
 # Live bot logs / journal (local runtime data)
 logs/
 
+# Personal live config (copy from config/live_config.example.yaml).
+# Keeps your symbols/risk/dry_run settings from conflicting with git pulls.
+config/live_config.yaml
+
 # Secrets / broker credentials - NEVER commit these
 .env
 *.secret
