@@ -15,18 +15,27 @@ connection:
   # path: "C:/Program Files/JustMarkets MT5/terminal64.exe"
 
 # Broker's REAL symbol names (from scripts/check_mt5.py).
-# NOTE: this JustMarkets ECN demo uses the ".ecn" suffix. Your live CENT account
-# will likely use different names - re-run check_mt5.py before going live there.
+# NOTE: this JustMarkets ECN demo uses the ".ecn" suffix. GOLD/SILVER/AUDUSD/
+# USDJPY are CONFIRMED; the rest are best-guesses -> RE-RUN check_mt5.py and
+# correct any that show a different name (or "NO MATCH").
 symbols:
-  GOLD:   XAUUSD.ecn
-  SILVER: XAGUSD.ecn
-  AUDUSD: AUDUSD.ecn
-  USDJPY: USDJPY.ecn
+  GOLD:     XAUUSD.ecn      # confirmed
+  SILVER:   XAGUSD.ecn      # confirmed
+  AUDUSD:   AUDUSD.ecn      # confirmed
+  USDJPY:   USDJPY.ecn      # confirmed
+  NATGAS:   NGAS.ecn        # VERIFY
+  PLATINUM: XPTUSD.ecn      # VERIFY
+  GBPJPY:   GBPJPY.ecn      # VERIFY
+  BRENT:    UKOIL.ecn       # VERIFY
+  # BTC:    BTCUSD.ecn      # optional crypto slot (see portfolio.OPTIONAL_CRYPTO)
 
 risk:
+  # With 8 instruments, 2% each = up to 16% at risk if all fire at once. Since
+  # the basket is diversified you don't need much per trade - consider lowering
+  # to ~1.0-1.5% as the universe grows. Kept at 2% per your preference.
   risk_percent_per_trade: 2.0
   max_risk_percent_per_trade: 5.0
-  max_open_trades: 4                # one per instrument in the portfolio
+  max_open_trades: 8                # one per instrument in the portfolio
   max_daily_loss_percent: 6.0       # halt new trades for the day past this loss
   max_total_drawdown_percent: 20.0  # KILL SWITCH: stop the bot entirely
 

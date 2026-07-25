@@ -22,10 +22,15 @@ from src.connectors import MT5Connector
 
 # What we want to trade -> search hints to find the broker's real name.
 WANTED = {
-    "GOLD":   ["XAUUSD", "XAU", "GOLD"],
-    "SILVER": ["XAGUSD", "XAG", "SILVER"],
-    "AUDUSD": ["AUDUSD", "AUD"],
-    "USDJPY": ["USDJPY", "JPY"],
+    "GOLD":     ["XAUUSD", "XAU", "GOLD"],
+    "SILVER":   ["XAGUSD", "XAG", "SILVER"],
+    "NATGAS":   ["NGAS", "NATGAS", "XNG", "GAS"],
+    "PLATINUM": ["XPTUSD", "XPT", "PLAT"],
+    "GBPJPY":   ["GBPJPY"],
+    "AUDUSD":   ["AUDUSD"],
+    "USDJPY":   ["USDJPY"],
+    "BRENT":    ["UKOIL", "BRENT", "XBR", "UKOUSD"],
+    "BTC":      ["BTCUSD", "BTC"],
 }
 
 

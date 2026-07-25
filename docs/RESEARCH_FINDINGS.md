@@ -186,3 +186,40 @@ mechanism-based rule (by strategy type), not per-instrument fitting. Wired into
 both backtest (`vol_scalar`) and live (`PortfolioSlot.use_vol_target` →
 `decide(risk_scalar=...)`). Net effect on the FX slots: OOS Sharpe ~1.2 → ~1.5
 with lower drawdown.
+
+
+---
+
+## Universe expansion + diversification (portfolio doubled)
+
+Expanded the tested universe to 25 instruments (11 FX, 7 commodities, 4 indices,
+3 crypto) and walk-forward scanned trend + mean-reversion on each (vol-targeting
+per our rule: ON for mean-reversion, OFF for trend). Nikkei dropped (too few H4
+bars); indices generally failed on the 2024-26 window.
+
+**9 instruments passed** (OOS, PF>=1.2, Sharpe>=0.4, positive):
+
+| Instrument | Strategy | Sharpe | Return | Max DD |
+|---|---|---|---|---|
+| XAUUSD | trend | 2.16 | +36.4% | 10.7% |
+| AUDUSD | mean-rev | 1.63 | +29.7% | 8.9% |
+| XAGUSD | trend | 1.42 | +19.9% | 6.9% |
+| NATGAS | trend | 1.20 | +22.2% | 6.4% |
+| BTC | trend | 0.92 | +24.6% | 10.1% |
+| PLATINUM | trend | 0.74 | +7.9% | 6.7% |
+| BRENT | mean-rev | 0.73 | +11.2% | 9.1% |
+| GBPJPY | trend | 0.67 | +12.8% | 11.5% |
+| USDJPY | mean-rev | 0.64 | +8.4% | 11.4% |
+
+**Diversification benefit (equal-weight blend of the 9):** avg individual Sharpe
+1.02 -> blended Sharpe ~2.3, blended max drawdown ~2%. The *principle* is solid
+(uncorrelated edges raise Sharpe, cut drawdown), but the exact figure is
+OPTIMISTIC: keepers were selected (bias), 5/9 are correlated commodities, the
+window is short, and flat days understate volatility. Expect a real but more
+modest improvement live.
+
+**Portfolio expanded from 4 to 8 non-crypto slots** (BTC kept optional per the
+avoid-crypto preference): trend on gold/silver/natgas/platinum/GBPJPY;
+mean-reversion (vol-target ON) on AUDUSD/USDJPY/Brent. Borderline keepers
+(Platinum/Brent/GBPJPY, Sharpe ~0.7) are included for diversification but should
+be watched on demo. New broker symbols must be verified with check_mt5.py.
