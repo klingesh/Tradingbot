@@ -5,6 +5,7 @@ from .position_sizing import (
     MinLotPolicy,
     calculate_position_size,
 )
+from .vol_target import volatility_target_scalar
 
 __all__ = [
     "SymbolSpec",
@@ -12,4 +13,5 @@ __all__ = [
     "SizingResult",
     "MinLotPolicy",
     "calculate_position_size",
+    "volatility_target_scalar",
 ]

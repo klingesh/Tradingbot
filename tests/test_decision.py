@@ -69,3 +69,14 @@ def test_skip_when_too_risky_for_min_lot():
     d = decide(_signals(1), position_side=0, bid=59999, ask=60001,
                balance=5.0, spec=SPEC, risk=RISK, sl_atr_mult=2.5, tp_rr=2.0)
     assert d.action == "skip"
+
+
+def test_vol_target_scalar_reduces_lots():
+    # A risk_scalar < 1 (high-vol regime) should reduce the position size.
+    base = decide(_signals(1), position_side=0, bid=59999, ask=60001,
+                  balance=100_000, spec=SPEC, risk=RISK, sl_atr_mult=2.5, tp_rr=2.0)
+    scaled = decide(_signals(1), position_side=0, bid=59999, ask=60001,
+                    balance=100_000, spec=SPEC, risk=RISK, sl_atr_mult=2.5, tp_rr=2.0,
+                    risk_scalar=0.5)
+    assert scaled.action == "enter"
+    assert scaled.lots == pytest.approx(base.lots * 0.5, rel=1e-6)

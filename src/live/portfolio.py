@@ -27,6 +27,10 @@ class PortfolioSlot:
     strategy_factory: Callable[..., Strategy]
     params: dict
     news_currencies: set[str] = field(default_factory=lambda: {"USD"})
+    # Volatility targeting helps mean-reversion (protects it in turbulent
+    # regimes) but HURTS trend-following (cuts its skew-driven tail winners),
+    # per our walk-forward test. So default ON only for mean-reversion slots.
+    use_vol_target: bool = False
 
     def build(self) -> Strategy:
         return self.strategy_factory(**self.params)
@@ -42,9 +46,24 @@ MEANREV_PARAMS = dict(
     sl_atr_mult=2.5, tp_rr=1.0,
 )
 
+# Diversified basket from the universe scan (walk-forward OOS validated).
+# TREND slots use vol-targeting OFF (it cuts their skew-driven tail winners);
+# MEAN-REVERSION slots use vol-targeting ON (protects them in turbulent regimes).
 DEFAULT_PORTFOLIO: list[PortfolioSlot] = [
-    PortfolioSlot("GOLD",   "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}),
-    PortfolioSlot("SILVER", "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}),
-    PortfolioSlot("AUDUSD", "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD", "AUD"}),
-    PortfolioSlot("USDJPY", "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD", "JPY"}),
+    # --- Trend-following (commodities trend best; GBPJPY the FX trender) ---
+    PortfolioSlot("GOLD",     "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}, use_vol_target=False),
+    PortfolioSlot("SILVER",   "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}, use_vol_target=False),
+    PortfolioSlot("NATGAS",   "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}, use_vol_target=False),
+    PortfolioSlot("PLATINUM", "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}, use_vol_target=False),
+    PortfolioSlot("GBPJPY",   "H4", EmaRsiSwing, dict(TREND_PARAMS), {"GBP", "JPY"}, use_vol_target=False),
+    # --- Mean-reversion (range-bound FX + oil; vol-targeting ON) ---
+    PortfolioSlot("AUDUSD",   "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD", "AUD"}, use_vol_target=True),
+    PortfolioSlot("USDJPY",   "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD", "JPY"}, use_vol_target=True),
+    PortfolioSlot("BRENT",    "H4", BollingerMeanReversion, dict(MEANREV_PARAMS), {"USD"}, use_vol_target=True),
+]
+
+# Optional crypto slot (validated OOS, trend). Off by default per the user's
+# preference to avoid crypto volatility; append to DEFAULT_PORTFOLIO to enable.
+OPTIONAL_CRYPTO: list[PortfolioSlot] = [
+    PortfolioSlot("BTC", "H4", EmaRsiSwing, dict(TREND_PARAMS), {"USD"}, use_vol_target=False),
 ]

@@ -26,6 +26,7 @@ import yaml
 
 from ..connectors import MT5Connector
 from ..risk.position_sizing import RiskParams, MinLotPolicy
+from ..risk.vol_target import volatility_target_scalar
 from ..news.calendar import ForexFactoryCalendar
 from ..news.filter import NewsFilter
 from .portfolio import DEFAULT_PORTFOLIO, PortfolioSlot
@@ -237,17 +238,27 @@ class LiveTrader:
         bid, ask = self.conn.current_tick(symbol)
         blackout = self._in_blackout(slot.news_currencies)
 
+        # Volatility-targeting scalar (only for slots configured to use it).
+        risk_scalar = 1.0
+        if getattr(slot, "use_vol_target", False):
+            vs = volatility_target_scalar(closed["close"], lookback=14,
+                                          median_window=500, min_scale=0.5, max_scale=1.5)
+            if len(vs):
+                risk_scalar = float(vs[-1])
+
         last = signals.iloc[-1]
         log.info(
-            "[%s/%s] bar=%s close=%.5f signal=%+d position=%+d%s",
+            "[%s/%s] bar=%s close=%.5f signal=%+d position=%+d  volscale=%.2f%s",
             slot.logical, symbol, str(latest_time), float(last["close"]),
-            int(last["signal"]), pos_side, "  [NEWS BLACKOUT]" if blackout else "",
+            int(last["signal"]), pos_side, risk_scalar,
+            "  [NEWS BLACKOUT]" if blackout else "",
         )
 
         d = decide(
             signals=signals, position_side=pos_side, bid=bid, ask=ask,
             balance=acct.balance, spec=spec, risk=self.cfg.risk,
             sl_atr_mult=strat.sl_atr_mult, tp_rr=strat.tp_rr, blackout=blackout,
+            risk_scalar=risk_scalar,
         )
 
         # Entry gating by portfolio-level limits.

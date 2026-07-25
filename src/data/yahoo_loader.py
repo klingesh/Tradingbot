@@ -21,14 +21,40 @@ YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 
 # Friendly name -> (Yahoo symbol, JustMarkets-style symbol, asset class)
 INSTRUMENTS = {
+    # --- FX majors ---
     "EURUSD": ("EURUSD=X", "EURUSD", "forex"),
     "GBPUSD": ("GBPUSD=X", "GBPUSD", "forex"),
     "USDJPY": ("USDJPY=X", "USDJPY", "forex"),
     "AUDUSD": ("AUDUSD=X", "AUDUSD", "forex"),
     "USDCAD": ("USDCAD=X", "USDCAD", "forex"),
+    # --- FX added (majors + crosses) ---
+    "USDCHF": ("USDCHF=X", "USDCHF", "forex"),
+    "NZDUSD": ("NZDUSD=X", "NZDUSD", "forex"),
+    "EURJPY": ("EURJPY=X", "EURJPY", "forex"),
+    "GBPJPY": ("GBPJPY=X", "GBPJPY", "forex"),
+    "EURGBP": ("EURGBP=X", "EURGBP", "forex"),
+    "AUDJPY": ("AUDJPY=X", "AUDJPY", "forex"),
+    # --- Commodities ---
     "XAUUSD": ("GC=F", "XAUUSD", "commodity"),   # gold
     "XAGUSD": ("SI=F", "XAGUSD", "commodity"),   # silver
     "WTI":    ("CL=F", "USOIL", "commodity"),    # crude oil
+    "BRENT":  ("BZ=F", "UKOIL", "commodity"),    # brent crude
+    "NATGAS": ("NG=F", "NGAS", "commodity"),     # natural gas
+    "COPPER": ("HG=F", "COPPER", "commodity"),   # copper
+    "PLATINUM": ("PL=F", "XPTUSD", "commodity"), # platinum
+    # --- Indices (futures continuous) ---
+    "SP500":  ("ES=F", "US500", "index"),        # S&P 500
+    "NASDAQ": ("NQ=F", "USTEC", "index"),        # Nasdaq 100
+    "DOW":    ("YM=F", "US30", "index"),         # Dow 30
+    "DAX":    ("^GDAXI", "GER40", "index"),      # DAX 40
+    "NIKKEI": ("^N225", "JP225", "index"),       # Nikkei 225
+}
+
+# Crypto handled via the OKX loader (real volume, 24/7): logical -> OKX instId.
+CRYPTO_INSTRUMENTS = {
+    "BTC": "BTC-USDT",
+    "ETH": "ETH-USDT",
+    "SOL": "SOL-USDT",
 }
 
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data_cache")

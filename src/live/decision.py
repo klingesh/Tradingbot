@@ -37,6 +37,7 @@ def decide(
     sl_atr_mult: float,
     tp_rr: float,
     blackout: bool = False,
+    risk_scalar: float = 1.0,    # volatility-targeting multiplier on risk %
 ) -> Decision:
     """
     Decide the action for one instrument based on its most recent CLOSED bar.
@@ -70,11 +71,20 @@ def decide(
     entry = ask if side == 1 else bid
     sl_dist = sl_atr_mult * atr
 
+    # Volatility-targeting overlay: scale the risk fraction (clamped by max).
+    eff_risk = risk
+    if risk_scalar and risk_scalar != 1.0 and risk_scalar > 0:
+        eff_risk = RiskParams(
+            risk.risk_percent_per_trade * risk_scalar,
+            risk.max_risk_percent_per_trade,
+            risk.on_min_lot_exceeds_risk,
+        )
+
     sizing = calculate_position_size(
         balance=balance,
         stop_loss_distance_price=sl_dist,
         symbol=spec,
-        risk=risk,
+        risk=eff_risk,
     )
     if not sizing.should_trade:
         return Decision("skip", side=side, reason=f"sizing: {sizing.reason}")

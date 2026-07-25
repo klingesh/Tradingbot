@@ -103,3 +103,123 @@ bot will also use the ForexFactory high-impact feed (CPI, PPI, rate decisions).
 
 Later option: **surprise mode** - trade the direction of a data surprise
 (actual vs forecast) rather than avoiding it. More complex; deferred.
+
+
+---
+
+## Fair Value Gap (FVG) strategy — tested, REJECTED
+
+Mined the Fair Value Gap concept from the EA indicator repo (SMC pack, Indi 39/92)
+and implemented an FVG pullback-continuation strategy (`src/strategy/fvg.py`):
+enter on a retrace into a fresh 3-candle imbalance, aligned with the daily trend.
+
+Walk-forward out-of-sample results:
+
+| Instrument | PF | Return | Max DD | Sharpe | Verdict |
+|---|---|---|---|---|---|
+| BTC | 0.84 | −12.1% | 30.4% | −0.19 | loses (in-sample +27% was overfit) |
+| Gold | 1.14 | +12.2% | 26.6% | 0.58 | profitable but worse than trend (Sharpe 1.35, 5.9% DD) |
+| Silver | 1.24 | +11.9% | 14.2% | 0.72 | profitable but worse than trend (Sharpe 0.85) |
+| AUDUSD | 0.60 | −25.7% | 36.9% | −0.94 | loses badly |
+| USDJPY | 0.65 | −8.9% | 22.8% | −0.36 | loses |
+
+**Decision: NOT added to the portfolio.** FVG is a real concept (positive OOS on
+gold/silver) but is dominated by our existing trend strategies there and loses on
+the other three instruments. Its big in-sample BTC result collapsed out-of-sample
+— a clean example of walk-forward catching overfitting before any money is risked.
+The code is kept as a validated experiment for reference.
+
+
+---
+
+## Order Block & Liquidity Sweep — tested (1 candidate found)
+
+Mined two more concept families from the EA repo and walk-forward tested them:
+`src/strategy/order_block.py` (SMC continuation) and
+`src/strategy/liquidity_sweep.py` (ICT stop-hunt reversal).
+
+Order Block continuation (OOS):
+
+| Instrument | PF | Return | Max DD | Sharpe | Verdict |
+|---|---|---|---|---|---|
+| BTC | 0.71 | -15.5% | 29.1% | -0.63 | loses |
+| Gold | 1.21 | +6.7% | 8.3% | 0.56 | worse than trend |
+| **Silver** | **1.67** | **+19.2%** | **5.9%** | **1.30** | **beats incumbent trend** |
+| AUDUSD | 0.36 | -19.0% | 26.8% | -1.18 | loses |
+| USDJPY | 1.23 | +9.8% | 9.2% | 0.50 | worse than MR |
+
+Liquidity Sweep reversal (OOS): positive but dominated on gold/silver/AUD/JPY
+(+2.8%/+9.8%/+9.8%/+18.3%), loses on BTC. No slot won. **Rejected.**
+
+**Candidate found: Order Block on SILVER.** It is a Pareto improvement over the
+incumbent silver trend strategy (+19.2% vs +11%, Sharpe 1.30 vs 0.85, 5.9% vs
+6.9% max DD) — same instrument, period and trend filter, just better entry
+timing. Caveat: ~26 OOS trades is a modest sample, and we tested ~15
+strategy×instrument combos, so multiple-comparisons luck can't be ruled out.
+**Decision: do NOT blind-swap; A/B test Silver-OB vs the trend version on demo.**
+All other OB/Sweep results rejected.
+
+
+---
+
+## Volatility targeting — KEPT (selectively)
+
+Evidence-backed enhancement (Moreira & Muir; vol-scaled momentum literature):
+scale the risk fraction inversely to how current volatility compares to its own
+trailing norm (`src/risk/vol_target.py`). Walk-forward, WITH vs WITHOUT:
+
+| Instrument | Strategy | Sharpe off→on | Return off→on | Max DD off→on |
+|---|---|---|---|---|
+| BTC | trend | 0.76 → 0.31 | +19.6% → +6.2% | 13.5% → 15.5% |
+| Gold | trend | 1.35 → 0.88 | +13.9% → +8.9% | 5.9% → 8.3% |
+| Silver | trend | 0.85 → 0.99 | +11.0% → +14.7% | 6.9% → 6.2% |
+| AUDUSD | mean-rev | 1.27 → **1.54** | +18.9% → +25.0% | 9.1% → 8.8% |
+| USDJPY | mean-rev | 1.18 → **1.54** | +17.9% → +24.7% | 11.9% → **8.4%** |
+
+**Finding: it is NOT universally good.** It HURTS trend-following (de-risks
+exactly during the volatile expansions that produce trend's skew-driven tail
+winners) but clearly HELPS mean-reversion (protects it in turbulent regimes).
+
+**Decision: apply it selectively — ON for the mean-reversion sleeve (AUDUSD,
+USDJPY), OFF for the trend sleeve (gold, silver, BTC).** This is a principled,
+mechanism-based rule (by strategy type), not per-instrument fitting. Wired into
+both backtest (`vol_scalar`) and live (`PortfolioSlot.use_vol_target` →
+`decide(risk_scalar=...)`). Net effect on the FX slots: OOS Sharpe ~1.2 → ~1.5
+with lower drawdown.
+
+
+---
+
+## Universe expansion + diversification (portfolio doubled)
+
+Expanded the tested universe to 25 instruments (11 FX, 7 commodities, 4 indices,
+3 crypto) and walk-forward scanned trend + mean-reversion on each (vol-targeting
+per our rule: ON for mean-reversion, OFF for trend). Nikkei dropped (too few H4
+bars); indices generally failed on the 2024-26 window.
+
+**9 instruments passed** (OOS, PF>=1.2, Sharpe>=0.4, positive):
+
+| Instrument | Strategy | Sharpe | Return | Max DD |
+|---|---|---|---|---|
+| XAUUSD | trend | 2.16 | +36.4% | 10.7% |
+| AUDUSD | mean-rev | 1.63 | +29.7% | 8.9% |
+| XAGUSD | trend | 1.42 | +19.9% | 6.9% |
+| NATGAS | trend | 1.20 | +22.2% | 6.4% |
+| BTC | trend | 0.92 | +24.6% | 10.1% |
+| PLATINUM | trend | 0.74 | +7.9% | 6.7% |
+| BRENT | mean-rev | 0.73 | +11.2% | 9.1% |
+| GBPJPY | trend | 0.67 | +12.8% | 11.5% |
+| USDJPY | mean-rev | 0.64 | +8.4% | 11.4% |
+
+**Diversification benefit (equal-weight blend of the 9):** avg individual Sharpe
+1.02 -> blended Sharpe ~2.3, blended max drawdown ~2%. The *principle* is solid
+(uncorrelated edges raise Sharpe, cut drawdown), but the exact figure is
+OPTIMISTIC: keepers were selected (bias), 5/9 are correlated commodities, the
+window is short, and flat days understate volatility. Expect a real but more
+modest improvement live.
+
+**Portfolio expanded from 4 to 8 non-crypto slots** (BTC kept optional per the
+avoid-crypto preference): trend on gold/silver/natgas/platinum/GBPJPY;
+mean-reversion (vol-target ON) on AUDUSD/USDJPY/Brent. Borderline keepers
+(Platinum/Brent/GBPJPY, Sharpe ~0.7) are included for diversification but should
+be watched on demo. New broker symbols must be verified with check_mt5.py.
