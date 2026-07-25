@@ -19,8 +19,12 @@ MetaTrader 5 (JustMarkets) account.
 - [ ] **Phase 5**  — Demo (paper) trading run on your laptop  ← NEXT (see docs/WINDOWS_SETUP.md)
 - [ ] **Phase 6**  — Small live deployment (Windows VPS + strict risk caps)
 
-Research results and the recommended portfolio: see `docs/RESEARCH_FINDINGS.md`.
-How to run it on your laptop: see `docs/WINDOWS_SETUP.md`.
+Documentation:
+- **Project report:** `docs/PROJECT_REPORT.md` (architecture, results, risk, caveats)
+- **Development story:** `docs/DEVELOPMENT_JOURNEY.md` (how it was built + lessons)
+- **Research log:** `docs/RESEARCH_FINDINGS.md` (every experiment + verdict)
+- **Run it:** `docs/WINDOWS_SETUP.md` and `docs/VPS_DEPLOYMENT.md`
+- **News tools:** `docs/NEWS_TOOLS.md`
 
 ## Important environment notes
 
