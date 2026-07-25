@@ -23,10 +23,10 @@ symbols:
   SILVER:   XAGUSD.ecn      # confirmed
   AUDUSD:   AUDUSD.ecn      # confirmed
   USDJPY:   USDJPY.ecn      # confirmed
-  NATGAS:   NGAS.ecn        # VERIFY
-  PLATINUM: XPTUSD.ecn      # VERIFY
-  GBPJPY:   GBPJPY.ecn      # VERIFY
-  BRENT:    UKOIL.ecn       # VERIFY
+  NATGAS:   XNGUSD.ecn      # confirmed
+  PLATINUM: XPTUSD.ecn      # confirmed
+  GBPJPY:   GBPJPY.ecn      # confirmed
+  BRENT:    BRENT.ecn       # confirmed
   # BTC:    BTCUSD.ecn      # optional crypto slot (see portfolio.OPTIONAL_CRYPTO)
 
 risk:
