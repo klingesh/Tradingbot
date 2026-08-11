@@ -47,3 +47,17 @@ class CSVJournal:
             "lots": lots, "price": price, "sl": sl, "tp": tp,
             "retcode": retcode, "reason": reason,
         })
+
+    def log_event(self, event: str, reason: str = "", balance: float = 0.0,
+                  equity: float = 0.0) -> None:
+        """Record something that happened to the bot rather than to a position.
+
+        Kill switches, daily-loss halts, starts and restarts. These used to exist
+        only as console output, so the single most important thing the bot can do
+        -- stop itself -- left no trace once the window scrolled. A halt belongs in
+        the same timeline as the trades that caused it.
+        """
+        self._write({
+            "kind": "event", "action": event, "reason": reason,
+            "balance": balance, "equity": equity,
+        })
