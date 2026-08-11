@@ -34,7 +34,7 @@ from ..news.filter import NewsFilter
 from .portfolio import DEFAULT_PORTFOLIO, PortfolioSlot
 from .decision import decide
 from .journal import CSVJournal
-from .lock import AlreadyRunning, SingleInstance
+from .lock import AlreadyRunning, hold as hold_single_instance
 from .state import BotState, position_to_dict, write_status
 
 log = logging.getLogger("trader")
@@ -440,7 +440,11 @@ def run(config_path: str = "config/live_config.yaml") -> None:
     # own drawdown baseline in memory, which splits the kill switch in half so
     # neither side sees the whole loss.
     try:
-        SingleInstance().acquire()
+        # Must go through hold(), which keeps a module-level reference. Building a
+        # SingleInstance here and discarding it would free the object at once,
+        # close its handle, and let the kernel drop the lock -- which is exactly
+        # how a second bot got started.
+        hold_single_instance()
     except AlreadyRunning as exc:
         log.error("Not starting: %s", exc)
         raise SystemExit(1)
