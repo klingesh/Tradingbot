@@ -156,17 +156,50 @@ That renders what would be published and sends nothing. Then:
 python scripts\publish_status.py --once
 ```
 
-### Running it
+### Running it unattended (recommended)
+
+From an **Administrator** command prompt, once:
+
+```
+scripts\install_publisher_task.bat
+```
+
+That registers a scheduled task which starts with Windows **whether anyone logs in
+or not**, and starts it immediately so no reboot is needed.
+
+Why a task rather than the Startup folder: a Startup shortcut only runs when a user
+logs in interactively. If the VPS reboots and nobody opens an RDP session, nothing
+starts — which is exactly the situation where remote monitoring matters most. It
+also means the publisher survives you logging off, where a console window does not.
+
+The **bot itself** still belongs in the Startup folder, because MetaTrader needs an
+interactive desktop session. The publisher doesn't: it reads a file and makes an
+HTTPS request, so it is happy running as SYSTEM.
+
+```
+schtasks /query /tn "BeasttStatusPublisher"     ... is it registered
+type logs\publisher_service.log                  ... what it has been doing
+schtasks /end /tn "BeasttStatusPublisher"        ... stop it
+schtasks /delete /tn "BeasttStatusPublisher" /f  ... remove it
+```
+
+**Do not run both** the task and `run_publisher.bat`. Two publishers writing the
+same file collide on every push: each fetches the file's blob sha, then both try to
+replace it, and the slower one is rejected.
+
+### Running it by hand
+
+For a quick check, or while setting up:
 
 ```
 scripts\run_publisher.bat
 ```
 
-Put a shortcut in the Startup folder beside `run_bot.bat`.
+That needs a console window and dies when it closes.
 
-**It runs as its own process, never inside the trading loop.** A network call that
-hangs would delay a tick, and monitoring must not be able to interfere with the
-thing it monitors.
+**Either way it runs as its own process, never inside the trading loop.** A network
+call that hangs would delay a tick, and monitoring must not be able to interfere
+with the thing it monitors.
 
 ### How often it publishes
 
