@@ -1,0 +1,152 @@
+"""The publisher must be quiet when nothing happens and loud when it does."""
+
+from __future__ import annotations
+
+import json
+
+from scripts.publish_status import (load_config, put_file, render_markdown,
+                                    significant)
+
+RUNNING = {
+    "heartbeat": "2026-08-11T09:14:02+00:00",
+    "equity": 9735.5, "balance": 9735.5, "peak_equity": 10000.0,
+    "currency": "USD", "drawdown_percent": 2.65, "drawdown_limit_percent": 20.0,
+    "day_drawdown_percent": 0.0, "day_loss_limit_percent": 6.0,
+    "halted": False, "day_halted": False, "new_entries_blocked": False,
+    "dry_run": False, "open_count": 0, "open_positions": [],
+    "restarts": 0, "recent_errors": [],
+}
+
+
+def test_a_heartbeat_alone_is_not_worth_a_commit():
+    """Otherwise this makes 1,440 commits a day to say nothing changed."""
+    later = dict(RUNNING, heartbeat="2026-08-11T09:15:02+00:00", equity=9740.10)
+    assert significant(later) == significant(RUNNING)
+
+
+def test_a_halt_is_worth_publishing_immediately():
+    halted = dict(RUNNING, halted=True, new_entries_blocked=True)
+    assert significant(halted) != significant(RUNNING)
+
+
+def test_so_is_a_position_opening_or_closing():
+    opened = dict(RUNNING, open_count=1)
+    assert significant(opened) != significant(RUNNING)
+
+
+def test_so_is_a_new_error_or_a_restart():
+    errored = dict(RUNNING, recent_errors=[{"at": "x", "message": "boom"}])
+    assert significant(errored) != significant(RUNNING)
+    restarted = dict(RUNNING, restarts=1)
+    assert significant(restarted) != significant(RUNNING)
+
+
+def test_so_is_switching_out_of_dry_run():
+    """The difference between logging trades and placing them."""
+    assert significant(dict(RUNNING, dry_run=True)) != significant(RUNNING)
+
+
+def test_markdown_leads_with_the_state():
+    assert render_markdown(RUNNING).startswith("# Running")
+    assert render_markdown(dict(RUNNING, halted=True)).startswith(
+        "# HALTED - kill switch fired")
+    assert render_markdown(dict(RUNNING, new_entries_blocked=True)).startswith(
+        "# TRADING PAUSED")
+
+
+def test_markdown_shows_drawdown_against_its_limit():
+    """A number without its limit doesn't say whether to worry."""
+    out = render_markdown(RUNNING)
+    assert "2.65% of 20.00% limit" in out
+    assert "9,735.50 USD" in out
+    assert "10,000.00 USD" in out
+
+
+def test_markdown_explains_a_halt_and_how_to_clear_it():
+    out = render_markdown(dict(
+        RUNNING, halted=True, halt_reason="total drawdown 21.00% >= 20.00%",
+        halted_at="2026-08-11T02:00:00+00:00"))
+    assert "21.00%" in out
+    assert "logs/state.json" in out
+    assert "understand why it fired first" in out
+
+
+def test_markdown_lists_open_positions():
+    out = render_markdown(dict(RUNNING, open_count=2, open_positions=[
+        {"symbol": "XAUUSD.ecn", "side": "buy", "lots": 0.12, "profit": 12.4},
+        {"symbol": "AUDUSD.ecn", "side": "sell", "lots": 0.3, "profit": -4.05},
+    ]))
+    assert "XAUUSD.ecn" in out and "AUDUSD.ecn" in out
+    assert "-4.05" in out
+
+
+def test_markdown_states_it_cannot_trade():
+    assert "cannot place, close or modify a trade" in render_markdown(RUNNING) \
+        or "nothing here can place, close or modify a trade" in \
+        render_markdown(RUNNING)
+
+
+def test_missing_config_file_is_not_fatal(tmp_path):
+    cfg = load_config(str(tmp_path / "absent.yaml"))
+    assert cfg["repo"] == ""
+    assert cfg["interval_seconds"] == 300
+    assert cfg["branch"] == "main"
+
+
+def test_environment_overrides_the_file(tmp_path, monkeypatch):
+    """So a token need never be written to disk on a snapshotted VPS."""
+    path = tmp_path / "publish.yaml"
+    path.write_text("repo: from/file\ntoken: file-token\n", encoding="utf-8")
+
+    monkeypatch.setenv("STATUS_REPO", "from/env")
+    monkeypatch.setenv("STATUS_TOKEN", "env-token")
+    cfg = load_config(str(path))
+    assert cfg["repo"] == "from/env"
+    assert cfg["token"] == "env-token"
+
+
+def test_create_omits_the_sha_and_update_includes_it(monkeypatch):
+    """Getting this wrong is the usual cause of a 409 from the Contents API."""
+    seen = {}
+
+    def fake_request(url, token, method="GET", payload=None):
+        seen["url"] = url
+        seen["method"] = method
+        seen["payload"] = payload
+        return 200, {"content": {}}
+
+    monkeypatch.setattr("scripts.publish_status._request", fake_request)
+
+    put_file("me/status", "status.json", b"{}", "msg", "main", "tok", None)
+    assert "sha" not in seen["payload"], "creating must not send a sha"
+    assert seen["method"] == "PUT"
+
+    put_file("me/status", "status.json", b"{}", "msg", "main", "tok", "abc123")
+    assert seen["payload"]["sha"] == "abc123", "updating must send the sha"
+
+
+def test_content_is_sent_base64_and_round_trips(monkeypatch):
+    import base64
+
+    captured = {}
+
+    def fake_request(url, token, method="GET", payload=None):
+        captured.update(payload or {})
+        return 201, None
+
+    monkeypatch.setattr("scripts.publish_status._request", fake_request)
+    body = json.dumps(RUNNING).encode("utf-8")
+    ok, why = put_file("me/status", "status.json", body, "msg", "main", "t", None)
+
+    assert ok is True and why == "ok"
+    assert base64.b64decode(captured["content"]) == body
+
+
+def test_a_failure_reports_the_reason(monkeypatch):
+    def fake_request(url, token, method="GET", payload=None):
+        return 404, {"message": "Not Found"}
+
+    monkeypatch.setattr("scripts.publish_status._request", fake_request)
+    ok, why = put_file("me/nope", "status.json", b"{}", "m", "main", "t", None)
+    assert ok is False
+    assert "404" in why and "Not Found" in why

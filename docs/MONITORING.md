@@ -116,6 +116,75 @@ python scripts\report.py
 `report.py` reads realised P&L from the broker's own deal history, which remains
 the source of truth for money. `status.json` is the bot's view of itself.
 
+## Watching it from another machine
+
+The bot runs on a VPS. Whatever watches it usually does not, and there is no way
+to read `logs/status.json` across that gap — so `scripts/publish_status.py` pushes
+it to a private GitHub repository that both ends can reach.
+
+GitHub is the transport for three practical reasons: nothing has to be opened on
+the VPS firewall, no new service has to be run or paid for, and the result is
+readable from a phone. It is not a clever choice; it is the one with the fewest
+moving parts.
+
+### Setup
+
+Create a **private** repository — `status.json` carries your equity, balance and
+open positions, and publishing that publicly would put your account performance on
+the internet.
+
+Then generate a fine-grained token with **Contents: Read and write** on that
+repository only, and:
+
+```
+copy config\publish.example.yaml config\publish.yaml
+notepad config\publish.yaml
+```
+
+Fill in `repo` and `token`. Prefer setting `STATUS_TOKEN` in the environment
+instead, so the token never lands on disk on a VPS that might be snapshotted.
+
+Check it before letting it loose:
+
+```
+python scripts\publish_status.py --dry-run
+```
+
+That renders what would be published and sends nothing. Then:
+
+```
+python scripts\publish_status.py --once
+```
+
+### Running it
+
+```
+scripts\run_publisher.bat
+```
+
+Put a shortcut in the Startup folder beside `run_bot.bat`.
+
+**It runs as its own process, never inside the trading loop.** A network call that
+hangs would delay a tick, and monitoring must not be able to interfere with the
+thing it monitors.
+
+### How often it publishes
+
+Every `interval_seconds` (default 300) when nothing notable is happening, and
+**immediately** when any of these change:
+
+- `halted` / `day_halted` / `new_entries_blocked`
+- `open_count` — a position opened or closed
+- `restarts` — the bot is crash-looping
+- a new entry in `recent_errors`
+- `dry_run` — the difference between logging trades and placing them
+
+The heartbeat and equity are deliberately excluded from that list. Both move every
+cycle, so treating them as notable would mean 1,440 commits a day saying nothing.
+
+Two files appear in the status repo: `status.json` for a monitor to parse, and
+`STATUS.md` for a person to open in the GitHub app.
+
 ## A note on scope
 
 Everything here is **read-only reporting**. Nothing in this file starts, stops or
