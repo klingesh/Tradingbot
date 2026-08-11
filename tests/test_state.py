@@ -210,3 +210,81 @@ def test_restart_count_is_visible(tmp_path):
     state.restarts = 41
     write_status(state, path=path)
     assert json.loads(open(path, encoding="utf-8").read())["restarts"] == 41
+
+
+
+# --- reporting a position's direction ---------------------------------------
+# The first version of this mapping read getattr(p, "type", 0) == 0, but
+# OpenPosition has no "type" attribute -- it has "side". So the default fired
+# every time and every position was reported as a buy. A real short Brent
+# position was published as "side": "buy" with its stop above its entry.
+
+class FakePosition:
+    """Shaped like connectors.OpenPosition: side is +1 long, -1 short."""
+
+    def __init__(self, side, symbol="BRENT.ecn", volume=0.04, price_open=88.5,
+                 sl=92.08, tp=84.9, profit=2.4, ticket=12345):
+        self.side = side
+        self.symbol = symbol
+        self.volume = volume
+        self.price_open = price_open
+        self.sl = sl
+        self.tp = tp
+        self.profit = profit
+        self.ticket = ticket
+        self.magic = 990011
+        self.comment = ""
+
+
+def test_a_short_is_reported_as_a_sell():
+    """The reported bug. side=-1 with the stop above entry is unambiguously short."""
+    from src.live.state import position_to_dict
+
+    got = position_to_dict(FakePosition(side=-1))
+    assert got["side"] == "sell"
+    assert got["sl"] > got["open_price"], "a short's stop sits above its entry"
+    assert got["tp"] < got["open_price"]
+
+
+def test_a_long_is_reported_as_a_buy():
+    from src.live.state import position_to_dict
+
+    got = position_to_dict(FakePosition(side=1, sl=84.9, tp=92.08))
+    assert got["side"] == "buy"
+    assert got["sl"] < got["open_price"]
+
+
+def test_an_unrecognised_side_is_not_guessed():
+    """Reporting the wrong direction confidently is worse than reporting none."""
+    from src.live.state import position_to_dict
+
+    assert position_to_dict(FakePosition(side=0))["side"] == "unknown"
+
+
+def test_an_object_missing_side_entirely_is_unknown_not_buy():
+    """Exactly how the bug behaved: a missing attribute became a buy."""
+    from src.live.state import position_to_dict
+
+    class Bare:
+        symbol = "XAUUSD.ecn"
+
+    assert position_to_dict(Bare())["side"] == "unknown"
+
+
+def test_position_fields_are_carried_through():
+    from src.live.state import position_to_dict
+
+    got = position_to_dict(FakePosition(side=-1))
+    assert got["symbol"] == "BRENT.ecn"
+    assert got["lots"] == 0.04
+    assert got["open_price"] == 88.5
+    assert got["profit"] == 2.4
+    assert got["ticket"] == 12345, "the ticket makes a report traceable to MT5"
+
+
+def test_profit_is_rounded_but_lots_are_not():
+    from src.live.state import position_to_dict
+
+    got = position_to_dict(FakePosition(side=1, profit=2.40567, volume=0.01))
+    assert got["profit"] == 2.41
+    assert got["lots"] == 0.01
