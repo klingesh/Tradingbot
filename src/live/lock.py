@@ -35,6 +35,39 @@ class AlreadyRunning(RuntimeError):
     """Another instance holds the lock."""
 
 
+#: The lock held by this process, kept alive deliberately. See hold().
+_held: "Optional[SingleInstance]" = None
+
+
+def hold(path: str = LOCK_PATH) -> "SingleInstance":
+    """Take the lock and keep it for the life of the process.
+
+    Use this rather than `SingleInstance().acquire()`. The reference is the whole
+    point: an unreferenced SingleInstance is freed the moment the statement ends,
+    CPython closes its file handle, and the kernel drops the lock -- so the next
+    process to start finds the file unlocked and runs anyway.
+
+    That is not hypothetical. The first version of this called
+    `SingleInstance().acquire()` and discarded the result, and a second bot started
+    without complaint. The tests passed because every one of them assigned the
+    result to a local; the single call site that mattered did not, and no test
+    covered it. The failure is not platform-specific -- it reproduces identically
+    on POSIX and on Windows, because it is about object lifetime, not file locking.
+    """
+    global _held
+    if _held is None:
+        _held = SingleInstance(path).acquire()
+    return _held
+
+
+def release_held() -> None:
+    """Drop the process-wide lock. Mainly for tests; the kernel does this at exit."""
+    global _held
+    if _held is not None:
+        _held.release()
+        _held = None
+
+
 class SingleInstance:
     """Hold an exclusive lock for the life of the process.
 

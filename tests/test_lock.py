@@ -126,3 +126,73 @@ def test_release_is_safe_to_call_twice(tmp_path):
     lock = SingleInstance(str(tmp_path / "bot.lock")).acquire()
     lock.release()
     lock.release()          # must not raise
+
+
+
+# --- the bug the first version shipped with ---------------------------------
+# run() called SingleInstance().acquire() and discarded the result. A second bot
+# then started without complaint. Every test above passes because it assigns the
+# result to a local; the one call site that mattered did not, and nothing covered
+# it. The cause is object lifetime, not file locking, so it reproduces identically
+# on POSIX and Windows.
+
+def test_a_discarded_lock_is_dropped_immediately(tmp_path):
+    """Documents the failure, so it cannot come back unnoticed."""
+    import gc
+
+    path = str(tmp_path / "bot.lock")
+    SingleInstance(path).acquire()          # result thrown away, as run() did
+    gc.collect()
+
+    # Nothing holds it now, so a second process would be let straight in.
+    second = SingleInstance(path).acquire()
+    second.release()
+
+
+def test_hold_survives_garbage_collection(tmp_path):
+    """The fix: a module-level reference keeps the handle, and so the lock, open."""
+    import gc
+
+    from src.live import lock as lock_module
+
+    path = str(tmp_path / "bot.lock")
+    lock_module.release_held()
+    try:
+        lock_module.hold(path)
+        gc.collect()
+        with pytest.raises(AlreadyRunning):
+            SingleInstance(path).acquire()
+    finally:
+        lock_module.release_held()
+
+
+def test_hold_is_idempotent_within_one_process(tmp_path):
+    """Calling it twice must not deadlock against itself."""
+    from src.live import lock as lock_module
+
+    path = str(tmp_path / "bot.lock")
+    lock_module.release_held()
+    try:
+        first = lock_module.hold(path)
+        again = lock_module.hold(path)
+        assert first is again
+    finally:
+        lock_module.release_held()
+
+
+def test_release_held_lets_a_new_instance_in(tmp_path):
+    from src.live import lock as lock_module
+
+    path = str(tmp_path / "bot.lock")
+    lock_module.release_held()
+    lock_module.hold(path)
+    lock_module.release_held()
+    SingleInstance(path).acquire().release()
+
+
+def test_the_trader_uses_hold_and_not_a_bare_acquire():
+    """A guard against the exact regression: the call site is what broke."""
+    source = open("src/live/trader.py", encoding="utf-8").read()
+    assert "hold_single_instance()" in source
+    assert "SingleInstance().acquire()" not in source, (
+        "a discarded SingleInstance is freed at once and the lock is lost")
