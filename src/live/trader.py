@@ -17,9 +17,11 @@ Run on Windows:  python live_trader.py
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 
 import pandas as pd
 import yaml
@@ -32,8 +34,13 @@ from ..news.filter import NewsFilter
 from .portfolio import DEFAULT_PORTFOLIO, PortfolioSlot
 from .decision import decide
 from .journal import CSVJournal
+from .state import BotState, write_status
 
 log = logging.getLogger("trader")
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 _TF_MINUTES = {"M15": 15, "H1": 60, "H4": 240, "D1": 1440}
 
@@ -90,10 +97,9 @@ class LiveTrader:
         self._filter_cache: dict = {}
         self._news_day = None
         self._last_bar: dict[str, pd.Timestamp] = {}
-        self._start_balance: float | None = None
-        self._day = None
-        self._day_start_equity: float | None = None
-        self._halted = False
+        # Safety state lives on disk, so a crash and restart cannot forgive a
+        # drawdown that already happened. See state.py for why that matters.
+        self.state = BotState.load()
 
     # ---- news ----
     def _refresh_news(self) -> None:
@@ -131,26 +137,88 @@ class LiveTrader:
 
     # ---- safety ----
     def _check_kill_switches(self, equity: float) -> bool:
-        """Return True if trading should be HALTED (no new entries)."""
-        if self._start_balance:
-            dd = (self._start_balance - equity) / self._start_balance * 100
-            if dd >= self.cfg.max_total_drawdown_percent:
-                log.error("KILL SWITCH: total drawdown %.2f%% >= %.2f%%. Halting.",
-                          dd, self.cfg.max_total_drawdown_percent)
-                self._halted = True
-                return True
+        """Return True if trading should be HALTED (no new entries).
 
-        today = datetime.now(timezone.utc).date()
-        if self._day != today:
-            self._day = today
-            self._day_start_equity = equity
-        if self._day_start_equity:
-            day_dd = (self._day_start_equity - equity) / self._day_start_equity * 100
-            if day_dd >= self.cfg.max_daily_loss_percent:
-                log.warning("Daily loss %.2f%% >= %.2f%%. No new entries today.",
-                            day_dd, self.cfg.max_daily_loss_percent)
-                return True
-        return False
+        The baseline comes from persisted state rather than from the balance at
+        connect time, which is what makes the switch survive a restart. Messages
+        are emitted once per event, not once per poll: at sixty-second intervals
+        the old code wrote the same halt line fourteen hundred times a day.
+        """
+        self.state.note_equity(equity)
+
+        dd = self.state.drawdown_percent(equity)
+        if dd >= self.cfg.max_total_drawdown_percent:
+            reason = (f"total drawdown {dd:.2f}% >= "
+                      f"{self.cfg.max_total_drawdown_percent:.2f}%")
+            if self.state.halt(reason):
+                log.error("KILL SWITCH: %s. Halting.", reason)
+                self._record_event("kill_switch", reason, equity)
+            self._save_state()
+            return True
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        if self.state.roll_day(today, equity):
+            self._save_state()
+
+        day_dd = self.state.day_drawdown_percent(equity)
+        if day_dd >= self.cfg.max_daily_loss_percent:
+            reason = (f"daily loss {day_dd:.2f}% >= "
+                      f"{self.cfg.max_daily_loss_percent:.2f}%")
+            if self.state.halt_day(reason):
+                log.warning("%s. No new entries today.", reason)
+                self._record_event("daily_loss_halt", reason, equity)
+                self._save_state()
+            return True
+
+        return self.state.halted
+
+    def _publish_status(self, acct, halt_new: bool, open_bot) -> None:
+        """Rewrite logs/status.json so something outside can see how we are doing.
+
+        The heartbeat is the point. Nothing else can tell a watcher on another
+        machine that the process has stopped: a bot that has died looks exactly
+        like a bot that has found nothing to trade, unless the timestamp is
+        going stale.
+        """
+        try:
+            positions = []
+            for p in (open_bot or []):
+                positions.append({
+                    "symbol": getattr(p, "symbol", ""),
+                    "side": "buy" if getattr(p, "type", 0) == 0 else "sell",
+                    "lots": float(getattr(p, "volume", 0.0) or 0.0),
+                    "open_price": float(getattr(p, "price_open", 0.0) or 0.0),
+                    "sl": float(getattr(p, "sl", 0.0) or 0.0),
+                    "tp": float(getattr(p, "tp", 0.0) or 0.0),
+                    "profit": round(float(getattr(p, "profit", 0.0) or 0.0), 2),
+                })
+            write_status(
+                self.state,
+                balance=acct.balance, equity=acct.equity,
+                currency=getattr(acct, "currency", ""),
+                login=getattr(acct, "login", ""),
+                dry_run=self.cfg.dry_run,
+                halt_new=halt_new,
+                open_positions=positions,
+                max_daily_loss_percent=self.cfg.max_daily_loss_percent,
+                max_total_drawdown_percent=self.cfg.max_total_drawdown_percent,
+            )
+        except Exception as exc:
+            # Monitoring must never be able to stop the thing it monitors.
+            log.debug("status write failed: %s", exc)
+
+    def _save_state(self) -> None:
+        """Persist safety state. A failure here must never stop the bot."""
+        try:
+            self.state.save()
+        except Exception as exc:
+            log.warning("could not save state: %s", exc)
+
+    def _record_event(self, event: str, reason: str, equity: float) -> None:
+        try:
+            self.journal.log_event(event, reason=reason, equity=equity)
+        except Exception as exc:
+            log.debug("journal event write failed: %s", exc)
 
     # ---- main ----
     def start(self) -> None:
@@ -161,10 +229,7 @@ class LiveTrader:
             server=c.get("server") or None,
             path=c.get("path") or None,
         )
-        self._start_balance = acct.balance
-        log.info("Connected. Login %s  Balance %.2f %s  %s",
-                 acct.login, acct.balance, acct.currency,
-                 "[DRY RUN]" if self.cfg.dry_run else "[LIVE ORDERS]")
+        self._on_connect(acct, loop=True)
         try:
             while True:
                 self._tick()
@@ -187,15 +252,45 @@ class LiveTrader:
             server=c.get("server") or None,
             path=c.get("path") or None,
         )
-        self._start_balance = acct.balance
-        log.info("Connected. Login %s  Balance %.2f %s  %s",
-                 acct.login, acct.balance, acct.currency,
-                 "[DRY RUN]" if self.cfg.dry_run else "[LIVE ORDERS]")
+        self._on_connect(acct, loop=False)
         try:
             self._tick()
         finally:
             self.conn.shutdown()
         log.info("One-shot check complete.")
+
+    def _on_connect(self, acct, loop: bool) -> None:
+        """Announce the connection and reconcile the persisted baseline.
+
+        Counting restarts is not bookkeeping for its own sake: a bot that has
+        restarted forty times in a day is crash-looping, and before this the
+        restart wrapper hid that completely.
+        """
+        self.state.sync_baseline(acct.balance)
+        if loop:
+            if self.state.started_at:
+                self.state.restarts += 1
+            self.state.started_at = self.state.started_at or _utc_now()
+        self._save_state()
+
+        log.info("Connected. Login %s  Balance %.2f %s  %s",
+                 acct.login, acct.balance, acct.currency,
+                 "[DRY RUN]" if self.cfg.dry_run else "[LIVE ORDERS]")
+        log.info("Kill-switch baseline %.2f (persisted); drawdown now %.2f%% "
+                 "of %.2f%% limit.",
+                 self.state.start_balance or 0.0,
+                 self.state.drawdown_percent(acct.equity),
+                 self.cfg.max_total_drawdown_percent)
+        if self.state.halted:
+            # The most important line the bot can print. Previously a halt did
+            # not survive a restart at all, so this state was unreachable.
+            log.error("STILL HALTED from a previous run (%s at %s). No new "
+                      "entries will be taken. Delete logs/state.json to clear.",
+                      self.state.halt_reason, self.state.halted_at)
+        if loop:
+            self._record_event("start", f"restart #{self.state.restarts}"
+                               if self.state.restarts else "first start",
+                               acct.equity)
 
     def _tick(self) -> None:
         self._refresh_news()
@@ -204,9 +299,10 @@ class LiveTrader:
             self.journal.log_equity(acct.balance, acct.equity)
         except Exception as e:
             log.debug("journal equity write failed: %s", e)
-        halt_new = self._check_kill_switches(acct.equity) or self._halted
+        halt_new = self._check_kill_switches(acct.equity)
         open_bot = self.conn.bot_positions()
         open_count = len(open_bot)
+        self._publish_status(acct, halt_new, open_bot)
 
         for slot in self.portfolio:
             broker_symbol = self.cfg.symbols.get(slot.logical)
@@ -318,10 +414,32 @@ class LiveTrader:
             log.debug("journal action write failed: %s", e)
 
 
-def _setup_logging() -> None:
+def _setup_logging(path: str = "logs/bot.log") -> None:
+    """Log to the console and to a rotating file.
+
+    Console-only logging meant every error the bot produced was lost. run_bot.bat
+    does not redirect output, and it restarts the process thirty seconds after any
+    exit -- so a traceback, an MT5 "initialize failed", or the kill-switch message
+    itself would scroll away and leave no evidence that anything had happened.
+
+    Five files of two megabytes is a few weeks of history at this log level, and
+    is bounded so an unattended VPS cannot fill its disk.
+    """
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        handlers.append(
+            RotatingFileHandler(path, maxBytes=2_000_000, backupCount=5,
+                                encoding="utf-8")
+        )
+    except Exception as exc:  # a read-only disk must not stop the bot
+        print(f"WARNING: file logging unavailable ({exc}); console only.")
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
+        force=True,
     )
 
 
