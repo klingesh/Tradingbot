@@ -181,6 +181,32 @@ class BotState:
         del self.recent_errors[:-keep]
 
 
+def position_to_dict(p: Any) -> Dict[str, Any]:
+    """Describe an OpenPosition for the status file.
+
+    Lives here, not in trader.py, because it needs to be testable. The first
+    version of this mapping was inline behind the MT5 imports and read
+    `getattr(p, "type", 0) == 0` -- but OpenPosition has no `type` attribute; it
+    has `side`, +1 for long and -1 for short. So the getattr default fired every
+    time and **every position was reported as a buy**, including a short Brent
+    position whose stop sat above its entry.
+
+    Confidently reporting the wrong direction is worse than reporting nothing, so
+    an unrecognised side is called "unknown" rather than guessed at.
+    """
+    side = int(getattr(p, "side", 0) or 0)
+    return {
+        "ticket": int(getattr(p, "ticket", 0) or 0),
+        "symbol": str(getattr(p, "symbol", "")),
+        "side": "buy" if side > 0 else "sell" if side < 0 else "unknown",
+        "lots": float(getattr(p, "volume", 0.0) or 0.0),
+        "open_price": float(getattr(p, "price_open", 0.0) or 0.0),
+        "sl": float(getattr(p, "sl", 0.0) or 0.0),
+        "tp": float(getattr(p, "tp", 0.0) or 0.0),
+        "profit": round(float(getattr(p, "profit", 0.0) or 0.0), 2),
+    }
+
+
 def write_status(
     state: BotState,
     *,

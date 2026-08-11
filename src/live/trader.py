@@ -34,7 +34,7 @@ from ..news.filter import NewsFilter
 from .portfolio import DEFAULT_PORTFOLIO, PortfolioSlot
 from .decision import decide
 from .journal import CSVJournal
-from .state import BotState, write_status
+from .state import BotState, position_to_dict, write_status
 
 log = logging.getLogger("trader")
 
@@ -181,17 +181,7 @@ class LiveTrader:
         going stale.
         """
         try:
-            positions = []
-            for p in (open_bot or []):
-                positions.append({
-                    "symbol": getattr(p, "symbol", ""),
-                    "side": "buy" if getattr(p, "type", 0) == 0 else "sell",
-                    "lots": float(getattr(p, "volume", 0.0) or 0.0),
-                    "open_price": float(getattr(p, "price_open", 0.0) or 0.0),
-                    "sl": float(getattr(p, "sl", 0.0) or 0.0),
-                    "tp": float(getattr(p, "tp", 0.0) or 0.0),
-                    "profit": round(float(getattr(p, "profit", 0.0) or 0.0), 2),
-                })
+            positions = [position_to_dict(p) for p in (open_bot or [])]
             write_status(
                 self.state,
                 balance=acct.balance, equity=acct.equity,
