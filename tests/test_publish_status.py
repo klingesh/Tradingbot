@@ -91,6 +91,14 @@ def test_missing_config_file_is_not_fatal(tmp_path):
     assert cfg["repo"] == ""
     assert cfg["interval_seconds"] == 300
     assert cfg["branch"] == "main"
+    assert cfg["status_path"] == "logs/status.json"
+
+
+def test_the_status_path_is_configurable(tmp_path):
+    """It was a default argument bound at import time, so it could not be moved."""
+    path = tmp_path / "publish.yaml"
+    path.write_text("status_path: D:/elsewhere/status.json\n", encoding="utf-8")
+    assert load_config(str(path))["status_path"] == "D:/elsewhere/status.json"
 
 
 def test_environment_overrides_the_file(tmp_path, monkeypatch):
@@ -150,3 +158,95 @@ def test_a_failure_reports_the_reason(monkeypatch):
     ok, why = put_file("me/nope", "status.json", b"{}", "m", "main", "t", None)
     assert ok is False
     assert "404" in why and "Not Found" in why
+
+
+
+# --- how the command-line tool behaves -------------------------------------
+# Found by running it: --once said nothing at all on success, retried forever on
+# failure, and Ctrl+C printed a traceback over the operator's console.
+
+def _configured(monkeypatch, tmp_path, status=RUNNING, published=True):
+    """Point the publisher at a temp status file and stub out the network."""
+    import scripts.publish_status as ps
+
+    path = tmp_path / "status.json"
+    if status is not None:
+        path.write_text(json.dumps(status), encoding="utf-8")
+
+    cfg = {
+        "repo": "me/status", "token": "tok", "branch": "main",
+        "status_path": str(path), "status_file": "status.json",
+        "readme_file": "STATUS.md", "interval_seconds": 300,
+    }
+    monkeypatch.setattr("scripts.publish_status.load_config", lambda *a: cfg)
+    monkeypatch.setattr("scripts.publish_status.LOG_PATH",
+                        str(tmp_path / "publisher.log"))
+    monkeypatch.setattr("scripts.publish_status.publish_once",
+                        lambda c, s: published)
+    return ps
+
+
+def test_once_succeeds_and_stops(tmp_path, monkeypatch):
+    ps = _configured(monkeypatch, tmp_path)
+    assert ps.main(["--once"]) == 0
+
+
+def test_once_reports_failure_instead_of_retrying_forever(tmp_path, monkeypatch):
+    """It used to `continue` past the --once check and loop until killed."""
+    ps = _configured(monkeypatch, tmp_path, published=False)
+    assert ps.main(["--once"]) == 1
+
+
+def test_once_with_no_status_file_is_a_failure(tmp_path, monkeypatch):
+    """Exiting 0 would tell a caller it had published when it had not."""
+    ps = _configured(monkeypatch, tmp_path, status=None)
+    assert ps.main(["--once"]) == 1
+
+
+def test_a_successful_publish_is_announced(tmp_path, monkeypatch, caplog=None):
+    """Silence after publishing left no way to tell whether it had worked."""
+    import logging
+
+    ps = _configured(monkeypatch, tmp_path)
+    records = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    handler = Capture()
+    ps.log.addHandler(handler)
+    try:
+        assert ps.main(["--once"]) == 0
+    finally:
+        ps.log.removeHandler(handler)
+
+    published = [r for r in records if "Published to me/status" in r]
+    assert published, f"no publish confirmation in {records}"
+    assert "9735.50" in published[0]
+    assert "2.65%" in published[0]
+    assert "running" in published[0]
+
+
+def test_ctrl_c_exits_cleanly(tmp_path, monkeypatch):
+    """Ctrl+C is how this is stopped; a traceback is not an acceptable goodbye."""
+    ps = _configured(monkeypatch, tmp_path)
+
+    import types as _types
+
+    def interrupt(_seconds):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("scripts.publish_status.time",
+                        _types.SimpleNamespace(sleep=interrupt, time=lambda: 0.0))
+    assert ps.main([]) == 0, "KeyboardInterrupt must not propagate"
+
+
+def test_unconfigured_refuses_with_guidance(tmp_path, monkeypatch):
+    import scripts.publish_status as ps
+
+    monkeypatch.setenv("STATUS_REPO", "")
+    monkeypatch.setenv("STATUS_TOKEN", "")
+    monkeypatch.setattr("scripts.publish_status.CONFIG_PATH",
+                        str(tmp_path / "absent.yaml"))
+    assert ps.main([]) == 1
