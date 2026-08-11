@@ -288,3 +288,105 @@ def test_profit_is_rounded_but_lots_are_not():
     got = position_to_dict(FakePosition(side=1, profit=2.40567, volume=0.01))
     assert got["profit"] == 2.41
     assert got["lots"] == 0.01
+
+
+
+# --- crash-looping is a rate, not a total -----------------------------------
+# A monitor reading the lifetime counter announced "possibly crash-looping" about a
+# bot that had been stable for hours, purely because it had been restarted by hand
+# nine times that morning. A threshold on a number that only ever rises fires
+# forever once crossed, which is how a warning becomes noise.
+
+def test_restarts_are_timestamped():
+    from src.live.state import BotState
+
+    state = BotState()
+    state.note_restart()
+    state.note_restart()
+    assert state.restarts == 2
+    assert len(state.restart_times) == 2
+
+
+def test_only_recent_restarts_count():
+    from datetime import datetime, timedelta, timezone
+
+    from src.live.state import BotState
+
+    now = datetime.now(timezone.utc)
+    state = BotState()
+    state.note_restart((now - timedelta(minutes=10)).isoformat())
+    state.note_restart((now - timedelta(minutes=40)).isoformat())
+    state.note_restart((now - timedelta(hours=5)).isoformat())
+
+    assert state.restarts == 3, "the lifetime total still counts everything"
+    assert state.restarts_within(1) == 2, "but only two happened in the last hour"
+    assert state.restarts_within(24) == 3
+
+
+def test_a_stable_bot_stops_looking_like_a_crash_loop():
+    """The reported false alarm: nine restarts this morning, quiet since."""
+    from datetime import datetime, timedelta, timezone
+
+    from src.live.state import BotState
+
+    now = datetime.now(timezone.utc)
+    state = BotState()
+    for _ in range(9):
+        state.note_restart((now - timedelta(hours=6)).isoformat())
+
+    assert state.restarts == 9
+    assert state.restarts_within(1) == 0, "nothing recent, so no warning"
+
+
+def test_restarts_older_than_a_day_are_forgotten():
+    from datetime import datetime, timedelta, timezone
+
+    from src.live.state import BotState
+
+    now = datetime.now(timezone.utc)
+    state = BotState()
+    state.note_restart((now - timedelta(days=3)).isoformat())
+    state.note_restart((now - timedelta(minutes=1)).isoformat())
+
+    assert state.restarts == 2, "the lifetime count is never rewritten"
+    assert len(state.restart_times) == 1, "but the old timestamp is pruned"
+
+
+def test_the_timestamp_list_cannot_grow_without_limit():
+    """A bot restarting every 30 seconds must not inflate the state file."""
+    from src.live.state import BotState
+
+    state = BotState()
+    for _ in range(500):
+        state.note_restart()
+    assert len(state.restart_times) == 200
+    assert state.restarts == 500
+
+
+def test_unparseable_timestamps_are_dropped_not_fatal():
+    from src.live.state import BotState
+
+    state = BotState(restart_times=["not a date", "also not a date"])
+    state.note_restart()
+    assert len(state.restart_times) == 1
+    assert state.restarts_within(1) == 1
+
+
+def test_status_publishes_the_windowed_counts(tmp_path):
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    from src.live.state import BotState, write_status
+
+    now = datetime.now(timezone.utc)
+    state = BotState()
+    state.note_restart((now - timedelta(minutes=5)).isoformat())
+    state.note_restart((now - timedelta(hours=8)).isoformat())
+
+    path = str(tmp_path / "status.json")
+    write_status(state, path=path)
+    got = json.loads(open(path, encoding="utf-8").read())
+
+    assert got["restarts"] == 2
+    assert got["restarts_last_hour"] == 1
+    assert got["restarts_last_day"] == 2

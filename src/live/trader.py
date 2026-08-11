@@ -260,7 +260,7 @@ class LiveTrader:
         self.state.sync_baseline(acct.balance)
         if loop:
             if self.state.started_at:
-                self.state.restarts += 1
+                self.state.note_restart()
             self.state.started_at = self.state.started_at or _utc_now()
         self._save_state()
 

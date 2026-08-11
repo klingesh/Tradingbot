@@ -30,7 +30,7 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 STATE_PATH = "logs/state.json"
@@ -84,7 +84,14 @@ class BotState:
     #: Rolling record of the last few faults, newest last.
     recent_errors: List[Dict[str, str]] = field(default_factory=list)
     started_at: str = ""
+    #: Lifetime count. Useful history, but useless as a warning: it only ever goes
+    #: up, so any threshold on it fires forever once crossed. A monitor reading
+    #: this said "possibly crash-looping" about a bot that had been stable for
+    #: hours, purely because it had been restarted by hand nine times that morning.
     restarts: int = 0
+    #: When those restarts happened, pruned to the last day. Crash-looping is a
+    #: rate -- three restarts in an hour -- not a total.
+    restart_times: List[str] = field(default_factory=list)
 
     # ---- persistence ----
     @classmethod
@@ -173,6 +180,39 @@ class BotState:
         self.day_halted = True
         return True
 
+    # ---- restarts ----
+    def note_restart(self, when: Optional[str] = None, keep_hours: int = 24,
+                     cap: int = 200) -> None:
+        """Record a restart and forget the ones older than a day.
+
+        Bounded twice over: by age, so the list reflects recent behaviour rather
+        than all history, and by length, so a bot restarting every thirty seconds
+        cannot grow the state file without limit.
+        """
+        self.restarts += 1
+        self.restart_times.append(when or _now())
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=keep_hours)
+        kept = []
+        for stamp in self.restart_times:
+            try:
+                if datetime.fromisoformat(stamp) >= cutoff:
+                    kept.append(stamp)
+            except ValueError:
+                continue          # unparseable entries are simply dropped
+        self.restart_times = kept[-cap:]
+
+    def restarts_within(self, hours: float) -> int:
+        """How many restarts in the last `hours`. This is the number worth acting on."""
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        total = 0
+        for stamp in self.restart_times:
+            try:
+                if datetime.fromisoformat(stamp) >= cutoff:
+                    total += 1
+            except ValueError:
+                continue
+        return total
+
     # ---- faults ----
     def note_error(self, where: str, message: str, keep: int = 20) -> None:
         self.recent_errors.append({
@@ -257,6 +297,9 @@ def write_status(
         "open_positions": positions,
         "open_count": len(positions),
         "restarts": int(state.restarts),
+        # The two that a watcher should judge on.
+        "restarts_last_hour": state.restarts_within(1),
+        "restarts_last_day": state.restarts_within(24),
         "started_at": state.started_at,
         "recent_errors": state.recent_errors[-5:],
     }
