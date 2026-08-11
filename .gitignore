@@ -21,6 +21,9 @@ logs/
 # Keeps your symbols/risk/dry_run settings from conflicting with git pulls.
 config/live_config.yaml
 
+# Publisher settings - contains a GitHub token. NEVER commit this.
+config/publish.yaml
+
 # Secrets / broker credentials - NEVER commit these
 .env
 *.secret

@@ -1,0 +1,31 @@
+# Publishing the bot's status so it can be watched from another machine.
+#
+# Copy this file to config/publish.yaml (which is gitignored) and fill it in.
+#
+#   copy config\publish.example.yaml config\publish.yaml
+#
+# The target repository MUST be private. status.json carries your equity,
+# balance and open positions -- publishing that to a public repo would put your
+# account performance on the internet.
+
+# owner/name of a PRIVATE repository to publish into.
+repo: ""
+
+# A fine-grained token with "Contents: Read and write" on that repository ONLY.
+# Generate at https://github.com/settings/personal-access-tokens/new
+#
+# Prefer setting STATUS_TOKEN in the environment instead of writing it here, so
+# the token never lands on disk on a VPS that might be snapshotted.
+token: ""
+
+branch: "main"
+
+# Filenames created in that repository.
+status_file: "status.json"   # machine-readable, for the monitor
+readme_file: "STATUS.md"     # human-readable, for reading on a phone
+
+# How often to publish when nothing notable is happening. A halt, a new error, a
+# position opening or closing, or a restart publishes immediately regardless.
+# 300s is 288 commits a day; pushing every 60-second heartbeat would be 1,440
+# commits saying nothing.
+interval_seconds: 300
