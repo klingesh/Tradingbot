@@ -56,6 +56,10 @@ def load_config(path: str = CONFIG_PATH) -> Dict[str, Any]:
     """
     cfg: Dict[str, Any] = {
         "repo": "", "token": "", "branch": "main",
+        # Where the bot writes its snapshot. Configurable because a default
+        # argument bound at import time cannot be pointed anywhere else -- which
+        # also made this function impossible to test.
+        "status_path": STATUS_PATH,
         "status_file": "status.json", "readme_file": "STATUS.md",
         "interval_seconds": 300,
     }
@@ -220,7 +224,7 @@ def render_markdown(status: Dict[str, Any]) -> str:
 
 
 # --- the loop ---------------------------------------------------------------
-def read_status(path: str = STATUS_PATH) -> Optional[Dict[str, Any]]:
+def read_status(path: str) -> Optional[Dict[str, Any]]:
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
@@ -279,7 +283,7 @@ def main(argv=None) -> int:
     cfg = load_config()
 
     if args.dry_run:
-        status = read_status()
+        status = read_status(cfg["status_path"])
         if status is None:
             print("No status.json -- start the bot first.")
             return 1
@@ -294,15 +298,25 @@ def main(argv=None) -> int:
         return 1
 
     log.info("Publishing %s to %s every %ss (immediately on a halt or error).",
-             STATUS_PATH, cfg["repo"], cfg["interval_seconds"])
+             cfg["status_path"], cfg["repo"], cfg["interval_seconds"])
 
     last_pushed = 0.0
     last_significant: Optional[Tuple] = None
     backoff = 0
 
-    while True:
-        status = read_status()
-        if status is not None:
+    try:
+        while True:
+            status = read_status(cfg["status_path"])
+
+            if status is None:
+                # Nothing to publish. With --once that is a failure to report,
+                # not a success: exiting 0 would tell a caller it had worked.
+                if args.once:
+                    log.error("No status to publish.")
+                    return 1
+                time.sleep(30)
+                continue
+
             marks = significant(status)
             due = (time.time() - last_pushed) >= cfg["interval_seconds"]
             changed = last_significant is not None and marks != last_significant
@@ -315,17 +329,38 @@ def main(argv=None) -> int:
                     last_pushed = time.time()
                     last_significant = marks
                     backoff = 0
+                    # Say so. Silence after a successful publish left no way to
+                    # tell whether --once had actually done anything.
+                    log.info(
+                        "Published to %s: equity %.2f, drawdown %.2f%% of %.2f%%, "
+                        "%d open, %s.",
+                        cfg["repo"], status.get("equity", 0.0),
+                        status.get("drawdown_percent", 0.0),
+                        status.get("drawdown_limit_percent", 0.0),
+                        status.get("open_count", 0),
+                        "HALTED" if status.get("halted") else "running",
+                    )
+                    if args.once:
+                        return 0
                 else:
+                    if args.once:
+                        return 1
                     # Never spin on a failing API: back off, but keep the last
                     # known-good marks so a real change still forces a retry.
                     backoff = min(backoff * 2 or 60, 900)
                     log.warning("Retrying in %ss.", backoff)
                     time.sleep(backoff)
                     continue
+            elif args.once:
+                log.info("Nothing new to publish.")
+                return 0
 
-        if args.once:
-            return 0
-        time.sleep(30)
+            time.sleep(30)
+    except KeyboardInterrupt:
+        # Ctrl+C is how this is stopped, so it is not an error and should not
+        # print a traceback over the operator's console.
+        log.info("Publisher stopped by user.")
+        return 0
 
 
 if __name__ == "__main__":

@@ -20,6 +20,9 @@ token: ""
 
 branch: "main"
 
+# Where the bot writes its snapshot. Only change this if you have moved logs/.
+status_path: "logs/status.json"
+
 # Filenames created in that repository.
 status_file: "status.json"   # machine-readable, for the monitor
 readme_file: "STATUS.md"     # human-readable, for reading on a phone
