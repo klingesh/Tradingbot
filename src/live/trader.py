@@ -34,6 +34,7 @@ from ..news.filter import NewsFilter
 from .portfolio import DEFAULT_PORTFOLIO, PortfolioSlot
 from .decision import decide
 from .journal import CSVJournal
+from .lock import AlreadyRunning, SingleInstance
 from .state import BotState, position_to_dict, write_status
 
 log = logging.getLogger("trader")
@@ -435,6 +436,14 @@ def _setup_logging(path: str = "logs/bot.log") -> None:
 
 def run(config_path: str = "config/live_config.yaml") -> None:
     _setup_logging()
+    # Refuse to be the second bot on this account. Two instances each keep their
+    # own drawdown baseline in memory, which splits the kill switch in half so
+    # neither side sees the whole loss.
+    try:
+        SingleInstance().acquire()
+    except AlreadyRunning as exc:
+        log.error("Not starting: %s", exc)
+        raise SystemExit(1)
     cfg = TraderConfig.load(config_path)
     LiveTrader(cfg).start()
 
