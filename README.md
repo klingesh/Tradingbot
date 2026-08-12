@@ -25,6 +25,8 @@ Documentation:
 - **Research log:** `docs/RESEARCH_FINDINGS.md` (every experiment + verdict)
 - **Run it:** `docs/WINDOWS_SETUP.md` and `docs/VPS_DEPLOYMENT.md`
 - **News tools:** `docs/NEWS_TOOLS.md`
+- **Monitoring it:** `docs/MONITORING.md` (state, logs, status publishing)
+- **Hardening log:** `docs/HARDENING_LOG.md` (faults found running unattended + fixes)
 
 ## Important environment notes
 
